@@ -28,273 +28,311 @@ export function Book3D({
   const groupRef = useRef<THREE.Group>(null!);
   const [hovered, setHovered] = useState(false);
 
-  // Book physical dimensions
-  const thickness = book.thickness ?? 0.18;
-  const height = book.height ?? 0.96;
-  const depth = book.depth ?? 0.58;
+  // Proportional trade hardcover dimensions matching the reference image
+  const thickness = 0.075; // Spine thickness (~3.2 cm in scale)
+  const height = 0.38;    // Height (~24 cm in scale)
+  const depth = 0.26;     // Width / Depth (~16 cm in scale)
+
+  const boardOverhang = 0.008; // 8mm overhang past text block
+  const boardThick = 0.006;    // Binder board thickness
+  const textBlockW = thickness - boardThick * 2 - 0.004;
+  const textBlockH = height - boardOverhang * 2;
+  const textBlockD = depth - boardOverhang;
 
   // Base coordinates
   const baseX = position[0];
-  const baseY = position[1] + height / 2; // place on shelf surface
+  const baseY = position[1] + height / 2; // Sit on shelf surface
   const baseZ = position[2] + zOffset;
 
-  // -------------------------------------------------------------
-  // 1. ULTRA-CRISP 4K PROCEDURAL SPINE TEXTURE (1024 x 2048)
-  // Zero blur, crystal clear typography and gold leaf embossing
-  // -------------------------------------------------------------
-  const spineTexture = useMemo(() => {
+  // =====================================================================
+  // 1. PROCEDURAL ULTRA-CRISP FRONT COVER ARTWORK TEXTURE (1024 x 1536)
+  // Illustrated front cover styled like "The Alchemist" / high-end hardcover
+  // =====================================================================
+  const frontCoverTexture = useMemo(() => {
     if (typeof window === 'undefined') return undefined;
     const canvas = document.createElement('canvas');
     canvas.width = 1024;
+    canvas.height = 1536;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return undefined;
+
+    // A. Base Midnight / Rich Jewel Tone Field matching the book's palette
+    const bgGrad = ctx.createLinearGradient(0, 0, 1024, 1536);
+    bgGrad.addColorStop(0, book.color || '#15243b');
+    bgGrad.addColorStop(0.35, book.spineColor || '#1c2d47');
+    bgGrad.addColorStop(0.75, '#0b1320');
+    bgGrad.addColorStop(1, '#050a12');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, 1024, 1536);
+
+    // Fine bookcloth canvas stipple
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.035)';
+    for (let y = 0; y < 1536; y += 4) {
+      ctx.fillRect(0, y, 1024, 1.5);
+    }
+
+    // B. Atmospheric Artwork / Illustrated Landscape Silhouette
+    // Glowing celestial / desert sun & horizons
+    const sunGrad = ctx.createRadialGradient(512, 820, 20, 512, 820, 360);
+    sunGrad.addColorStop(0, '#fff4b8');
+    sunGrad.addColorStop(0.3, '#f59e0b');
+    sunGrad.addColorStop(0.65, 'rgba(217, 119, 6, 0.4)');
+    sunGrad.addColorStop(1, 'rgba(217, 119, 6, 0)');
+    ctx.fillStyle = sunGrad;
+    ctx.beginPath();
+    ctx.arc(512, 820, 360, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Layered Dune & Mountain Silhouettes
+    ctx.fillStyle = '#1e1106';
+    ctx.beginPath();
+    ctx.moveTo(0, 1020);
+    ctx.bezierCurveTo(240, 960, 480, 1040, 720, 980);
+    ctx.bezierCurveTo(860, 940, 960, 990, 1024, 1010);
+    ctx.lineTo(1024, 1536);
+    ctx.lineTo(0, 1536);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#0f0803';
+    ctx.beginPath();
+    ctx.moveTo(0, 1150);
+    ctx.bezierCurveTo(320, 1100, 640, 1180, 1024, 1120);
+    ctx.lineTo(1024, 1536);
+    ctx.lineTo(0, 1536);
+    ctx.closePath();
+    ctx.fill();
+
+    // C. Elegant Debossed Gold Foil Border Frame
+    ctx.strokeStyle = '#e5c158';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(56, 56, 912, 1424);
+
+    ctx.strokeStyle = '#fff3c4';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(70, 70, 884, 1396);
+
+    // D. BOOK TITLE IN METALLIC GOLD FOIL (Bold Roman Serif)
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // Gold Foil Title Header
+    ctx.fillStyle = '#fce498';
+    ctx.font = 'bold 36px "Cinzel", "Georgia", serif';
+    ctx.letterSpacing = '8px';
+    ctx.fillText('SPECIAL EDITION', 512, 180);
+
+    // Main Title Name
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.font = '900 84px "Cinzel", "Playfair Display", "Times New Roman", serif';
+    ctx.letterSpacing = '5px';
+    ctx.fillText(book.title.toUpperCase(), 515, 345);
+
+    ctx.fillStyle = '#fef08a';
+    ctx.fillText(book.title.toUpperCase(), 512, 340);
+
+    // Gold diamond ornament rule
+    ctx.strokeStyle = '#e5c158';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(280, 430);
+    ctx.lineTo(744, 430);
+    ctx.stroke();
+
+    ctx.fillStyle = '#e5c158';
+    ctx.beginPath();
+    ctx.moveTo(512, 420);
+    ctx.lineTo(524, 430);
+    ctx.lineTo(512, 440);
+    ctx.lineTo(500, 430);
+    ctx.closePath();
+    ctx.fill();
+
+    // Publication Year & Classic Seal
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '600 42px "Cinzel", "Georgia", serif';
+    ctx.letterSpacing = '4px';
+    ctx.fillText(`PUBLISHED • ${book.year}`, 512, 510);
+
+    // E. French Groove Joint Shadow Line (Left hinge indentation)
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+    ctx.fillRect(40, 0, 16, 1536);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.fillRect(56, 0, 6, 1536);
+
+    ctx.restore();
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.generateMipmaps = true;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.needsUpdate = true;
+    return tex;
+  }, [book]);
+
+  // =====================================================================
+  // 2. PROCEDURAL 4K SPINE TEXTURE WITH GOLD FOIL TITLE (512 x 2048)
+  // =====================================================================
+  const spineTexture = useMemo(() => {
+    if (typeof window === 'undefined') return undefined;
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
     canvas.height = 2048;
     const ctx = canvas.getContext('2d');
     if (!ctx) return undefined;
 
-    // A. Base Rich Full-Grain Morocco Leather / Buckram
-    ctx.fillStyle = book.spineColor;
-    ctx.fillRect(0, 0, 1024, 2048);
+    // Rich matching buckram bookcloth
+    ctx.fillStyle = book.spineColor || '#1c2d47';
+    ctx.fillRect(0, 0, 512, 2048);
 
-    // Fine tactile leather grain texture
-    const imgData = ctx.getImageData(0, 0, 1024, 2048);
-    const data = imgData.data;
-    for (let i = 0; i < data.length; i += 4) {
-      const noise = (Math.random() - 0.5) * 14;
-      data[i] = Math.min(255, Math.max(0, data[i] + noise));
-      data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + noise));
-      data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + noise));
-    }
-    ctx.putImageData(imgData, 0, 0);
+    // Cylindrical curved shading (shadows on edges, soft crown highlight)
+    const spineShade = ctx.createLinearGradient(0, 0, 512, 0);
+    spineShade.addColorStop(0, 'rgba(0, 0, 0, 0.55)');
+    spineShade.addColorStop(0.15, 'rgba(0, 0, 0, 0.15)');
+    spineShade.addColorStop(0.5, 'rgba(255, 255, 255, 0.18)');
+    spineShade.addColorStop(0.85, 'rgba(0, 0, 0, 0.15)');
+    spineShade.addColorStop(1, 'rgba(0, 0, 0, 0.55)');
+    ctx.fillStyle = spineShade;
+    ctx.fillRect(0, 0, 512, 2048);
 
-    // B. Cylindrical 3D Curvature Highlight (Shadows at outer edges, bright crown)
-    const grad = ctx.createLinearGradient(0, 0, 1024, 0);
-    grad.addColorStop(0, 'rgba(0, 0, 0, 0.42)');
-    grad.addColorStop(0.12, 'rgba(0, 0, 0, 0.12)');
-    grad.addColorStop(0.5, 'rgba(255, 255, 255, 0.2)');
-    grad.addColorStop(0.88, 'rgba(0, 0, 0, 0.12)');
-    grad.addColorStop(1, 'rgba(0, 0, 0, 0.42)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 1024, 2048);
-
-    // C. 5 Raised Horizontal Bands with Gold Leaf Foil Filigree
-    const bandYs = [300, 700, 1100, 1500, 1820];
-    bandYs.forEach((by) => {
-      // Warm gold foil band gradient
-      const goldGrad = ctx.createLinearGradient(0, by - 24, 0, by + 24);
-      goldGrad.addColorStop(0, '#9e6a10');
-      goldGrad.addColorStop(0.2, '#fde68a');
-      goldGrad.addColorStop(0.6, '#ffffff');
-      goldGrad.addColorStop(0.85, '#d97706');
-      goldGrad.addColorStop(1, '#78350f');
-
-      ctx.fillStyle = goldGrad;
-      ctx.fillRect(48, by - 12, 928, 24);
-
-      // Fine embossed border rules
-      ctx.strokeStyle = '#451a03';
-      ctx.lineWidth = 3;
-      ctx.strokeRect(48, by - 12, 928, 24);
-
-      // Ornate embossed gold dots along the band
-      ctx.fillStyle = '#fffbeb';
-      for (let x = 80; x < 960; x += 64) {
-        ctx.beginPath();
-        ctx.arc(x, by, 5, 0, Math.PI * 2);
-        ctx.fill();
-      }
+    // Gold Top Crown & Tail Bands
+    [180, 1860].forEach((by) => {
+      ctx.fillStyle = '#e5c158';
+      ctx.fillRect(36, by, 440, 10);
+      ctx.fillStyle = '#fff4b8';
+      ctx.fillRect(36, by + 2, 440, 3);
     });
 
-    // D. Top Classical Headband Crown Frame
-    ctx.strokeStyle = book.accentColor || '#fde047';
-    ctx.lineWidth = 6;
-    ctx.strokeRect(64, 60, 896, 160);
-    ctx.lineWidth = 3;
-    ctx.strokeRect(76, 72, 872, 136);
-
-    // Center gold fleur-de-lis / crown emblem
-    ctx.fillStyle = book.accentColor || '#fde047';
-    ctx.beginPath();
-    ctx.arc(512, 140, 32, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = book.spineColor;
-    ctx.beginPath();
-    ctx.arc(512, 140, 18, 0, Math.PI * 2);
-    ctx.fill();
-
-    // E. Bottom Tailpiece Publisher Frame & Year
-    ctx.strokeStyle = book.accentColor || '#fde047';
-    ctx.lineWidth = 6;
-    ctx.strokeRect(64, 1880, 896, 120);
-
-    // Publication Year in Gold
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 74px "Cinzel", "Playfair Display", "Times New Roman", Georgia, serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(book.year, 512, 1940);
-
-    // F. VERTICAL BOOK TITLE - BOLD, SHARP, ELEGANT GOLD FOIL STAMPING
+    // Vertical Book Title in Gold Foil
     ctx.save();
-    ctx.translate(512, 1020);
+    ctx.translate(256, 1024);
     ctx.rotate(-Math.PI / 2);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // Deep embossed drop shadow
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
-    ctx.font = '900 88px "Cinzel", "Playfair Display", "Times New Roman", Georgia, serif';
-    ctx.letterSpacing = '4px';
-    ctx.fillText(book.title.toUpperCase(), 4, 6);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.font = '900 86px "Cinzel", "Playfair Display", "Times New Roman", serif';
+    ctx.letterSpacing = '6px';
+    ctx.fillText(book.title.toUpperCase(), 3, 5);
 
-    // High-contrast gold & white face (razor sharp legibility)
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = '#fef08a';
     ctx.fillText(book.title.toUpperCase(), 0, 0);
+
+    // Publication year on spine tail
+    ctx.font = 'bold 58px "Cinzel", "Georgia", serif';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(book.year, -680, 0);
+
     ctx.restore();
 
+    // Publisher Oval Emblem at the tail (like Penguin/Classics)
+    ctx.fillStyle = '#d97706';
+    ctx.beginPath();
+    ctx.ellipse(256, 1940, 38, 52, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 4;
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '900 38px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Y', 256, 1940);
+
     const tex = new THREE.CanvasTexture(canvas);
-    // Crucial: Disable mipmaps to eliminate distance blurriness completely
-    tex.generateMipmaps = false;
-    tex.minFilter = THREE.LinearFilter;
+    tex.generateMipmaps = true;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
     tex.magFilter = THREE.LinearFilter;
     tex.needsUpdate = true;
     return tex;
   }, [book]);
 
-  // -------------------------------------------------------------
-  // 2. PROCEDURAL COVER BOARD TEXTURE (1024 x 1024)
-  // -------------------------------------------------------------
-  const coverTexture = useMemo(() => {
+  // =====================================================================
+  // 3. TEXT BLOCK PAPER TEXTURE (Warm Ivory with Page Striations)
+  // =====================================================================
+  const textBlockTexture = useMemo(() => {
     if (typeof window === 'undefined') return undefined;
     const canvas = document.createElement('canvas');
-    canvas.width = 1024;
-    canvas.height = 1024;
+    canvas.width = 512;
+    canvas.height = 512;
     const ctx = canvas.getContext('2d');
     if (!ctx) return undefined;
 
-    // Base cover color
-    ctx.fillStyle = book.color;
-    ctx.fillRect(0, 0, 1024, 1024);
+    // Warm natural off-white book paper
+    ctx.fillStyle = '#f7f3e8';
+    ctx.fillRect(0, 0, 512, 512);
 
-    // Micro-grain stipple
-    const imgData = ctx.getImageData(0, 0, 1024, 1024);
-    const data = imgData.data;
-    for (let i = 0; i < data.length; i += 4) {
-      const n = (Math.random() - 0.5) * 14;
-      data[i] = Math.min(255, Math.max(0, data[i] + n));
-      data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + n));
-      data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + n));
+    // Horizontal micro-striations for individual paper leaves
+    ctx.fillStyle = 'rgba(160, 140, 110, 0.22)';
+    for (let y = 0; y < 512; y += 4) {
+      ctx.fillRect(0, y, 512, 1.5);
     }
-    ctx.putImageData(imgData, 0, 0);
-
-    // Gold foil double-ruled border
-    ctx.strokeStyle = book.accentColor || '#fde047';
-    ctx.lineWidth = 8;
-    ctx.strokeRect(48, 48, 928, 928);
-    ctx.lineWidth = 3;
-    ctx.strokeRect(68, 68, 888, 888);
-
-    // Corner filigree flourishes
-    const corners = [
-      [68, 68],
-      [956, 68],
-      [68, 956],
-      [956, 956],
-    ];
-    ctx.fillStyle = book.accentColor || '#fde047';
-    corners.forEach(([cx, cy]) => {
-      ctx.beginPath();
-      ctx.arc(cx, cy, 12, 0, Math.PI * 2);
-      ctx.fill();
-    });
+    ctx.fillStyle = 'rgba(60, 45, 30, 0.12)';
+    for (let y = 0; y < 512; y += 12) {
+      ctx.fillRect(0, y, 512, 1);
+    }
 
     const tex = new THREE.CanvasTexture(canvas);
-    tex.generateMipmaps = false;
-    tex.minFilter = THREE.LinearFilter;
-    tex.magFilter = THREE.LinearFilter;
-    tex.needsUpdate = true;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(1, 8);
     return tex;
-  }, [book]);
+  }, []);
 
-  // -------------------------------------------------------------
-  // 3. MATERIALS
-  // -------------------------------------------------------------
+  // Materials
   const materials = useMemo(() => {
-    // Hardcover cloth/leather
-    const coverMat = new THREE.MeshStandardMaterial({
-      map: coverTexture,
-      roughness: 0.32,
+    const frontCoverMat = new THREE.MeshStandardMaterial({
+      map: frontCoverTexture,
+      roughness: 0.38,
+      metalness: 0.06,
+    });
+
+    const spineMat = new THREE.MeshStandardMaterial({
+      map: spineTexture,
+      roughness: 0.35,
       metalness: 0.08,
     });
 
-    // Curved spine material (self-illuminated to stay crisp and brilliant)
-    const spineMat = new THREE.MeshBasicMaterial({
-      map: spineTexture,
-      toneMapped: false,
+    const plainCoverMat = new THREE.MeshStandardMaterial({
+      color: book.spineColor || '#1c2d47',
+      roughness: 0.45,
+      metalness: 0.04,
     });
 
-    // Warm ivory paper pages
-    const pagesMat = new THREE.MeshStandardMaterial({
-      color: '#fcf8ee',
-      roughness: 0.8,
+    const paperMat = new THREE.MeshStandardMaterial({
+      map: textBlockTexture,
+      color: '#fcf8ef',
+      roughness: 0.85,
       metalness: 0.02,
     });
 
-    // Gilded luxury gold top page edge
-    const gildedTopMat = new THREE.MeshStandardMaterial({
+    const headbandMat = new THREE.MeshStandardMaterial({
       color: '#d4af37',
-      roughness: 0.22,
-      metalness: 0.88,
-    });
-
-    // Gold raised ribs material
-    const raisedRibMat = new THREE.MeshStandardMaterial({
-      color: '#f59e0b',
-      roughness: 0.2,
-      metalness: 0.82,
-    });
-
-    // Silk bookmark ribbon
-    const ribbonMat = new THREE.MeshStandardMaterial({
-      color: book.accentColor || '#c2410c',
-      roughness: 0.3,
-      metalness: 0.1,
-      side: THREE.DoubleSide,
+      roughness: 0.4,
+      metalness: 0.3,
     });
 
     return {
-      coverMat,
+      frontCoverMat,
       spineMat,
-      pagesMat,
-      gildedTopMat,
-      raisedRibMat,
-      ribbonMat,
+      plainCoverMat,
+      paperMat,
+      headbandMat,
     };
-  }, [coverTexture, spineTexture, book.accentColor]);
+  }, [frontCoverTexture, spineTexture, textBlockTexture, book.spineColor]);
 
-  // Page block dimensions (slightly inset from cover boards)
-  const pageW = thickness - 0.024;
-  const pageH = height - 0.034;
-  const pageD = depth - 0.035;
-
-  // 5 Raised rib positions along the spine
-  const bandRelYs = [
-    height * 0.38,
-    height * 0.18,
-    -0.02,
-    -height * 0.22,
-    -height * 0.38,
-  ];
-
-  // -------------------------------------------------------------
+  // =====================================================================
   // 4. INTERACTION ANIMATION (Smooth 3D Pop-Out)
-  // -------------------------------------------------------------
+  // =====================================================================
   useFrame((_, delta) => {
     if (!groupRef.current) return;
 
-    // Pop forward along Z when hovered
-    const targetZ = hovered ? baseZ + 0.34 : baseZ;
-    const targetY = hovered ? baseY + 0.05 : baseY;
+    const targetZ = hovered ? baseZ + 0.14 : baseZ;
+    const targetY = hovered ? baseY + 0.02 : baseY;
     const targetRotX = hovered ? 0.06 : 0;
-    const targetRotZ = hovered ? tiltAngle - 0.04 : tiltAngle;
+    const targetRotZ = hovered ? tiltAngle - 0.03 : tiltAngle;
 
     const lerpSpeed = Math.min(1, delta * 14);
 
@@ -330,8 +368,7 @@ export function Book3D({
         setHovered(true);
         document.body.style.cursor = 'pointer';
       }}
-      onPointerOut={(e) => {
-        e.stopPropagation();
+      onPointerOut={() => {
         setHovered(false);
         document.body.style.cursor = 'auto';
       }}
@@ -341,50 +378,60 @@ export function Book3D({
       }}
     >
       {/* ========================================================= */}
-      {/* A. INNER PAPER BLOCK (Gilded Top & Ivory Side Pages)       */}
-      {/* ========================================================= */}
-      <group position={[0, 0, -0.012]}>
-        <mesh
-          material={[
-            materials.pagesMat,
-            materials.pagesMat,
-            materials.gildedTopMat, // +y gilt gold top edge
-            materials.pagesMat,
-            materials.pagesMat,
-            materials.pagesMat,
-          ]}
-          castShadow
-          receiveShadow
-        >
-          <boxGeometry args={[pageW, pageH, pageD]} />
-        </mesh>
-      </group>
-
-      {/* ========================================================= */}
-      {/* B. HARDCOVER BOARDS (Left & Right with Square Overhang)    */}
+      {/* A. INNER PAPER TEXT BLOCK (Recessed with Overhangs)        */}
       {/* ========================================================= */}
       <mesh
-        position={[-thickness / 2 + 0.006, 0, 0]}
-        material={materials.coverMat}
+        position={[0, 0, -boardOverhang / 2]}
+        material={materials.paperMat}
         castShadow
         receiveShadow
       >
-        <boxGeometry args={[0.012, height, depth]} />
-      </mesh>
-      <mesh
-        position={[thickness / 2 - 0.006, 0, 0]}
-        material={materials.coverMat}
-        castShadow
-        receiveShadow
-      >
-        <boxGeometry args={[0.012, height, depth]} />
+        <boxGeometry args={[textBlockW, textBlockH, textBlockD]} />
       </mesh>
 
       {/* ========================================================= */}
-      {/* C. CURVED 3D SPINE (+Z Front Facing the Aisle)            */}
+      {/* B. HARDCOVER BINDER BOARDS (Left Cover & Right Front Cover)*/}
       {/* ========================================================= */}
-      <group position={[0, 0, depth / 2 - 0.01]}>
-        {/* Smooth arched spine cylinder segment */}
+      {/* Back Cover Board (Left face) */}
+      <mesh
+        position={[-thickness / 2 + boardThick / 2, 0, 0]}
+        material={materials.plainCoverMat}
+        castShadow
+        receiveShadow
+      >
+        <boxGeometry args={[boardThick, height, depth]} />
+      </mesh>
+
+      {/* Front Cover Board (Right face with Illustrated Artwork) */}
+      <mesh
+        position={[thickness / 2 - boardThick / 2, 0, 0]}
+        material={[
+          materials.frontCoverMat, // +X Outer front cover face
+          materials.plainCoverMat, // -X Inner paste-down face
+          materials.plainCoverMat, // +Y Head edge
+          materials.plainCoverMat, // -Y Tail edge
+          materials.plainCoverMat, // +Z Fore-edge
+          materials.plainCoverMat, // -Z Spine edge
+        ]}
+        castShadow
+        receiveShadow
+      >
+        <boxGeometry args={[boardThick, height, depth]} />
+      </mesh>
+
+      {/* French Groove Crease Indentation (Joint alongside spine) */}
+      <mesh
+        position={[thickness / 2 - boardThick * 1.5, 0, depth / 2 - 0.02]}
+        material={materials.plainCoverMat}
+      >
+        <boxGeometry args={[0.002, height, 0.004]} />
+      </mesh>
+
+      {/* ========================================================= */}
+      {/* C. ROUNDED CONVEX 3D SPINE (+Z Facing Corridor Aisle)      */}
+      {/* ========================================================= */}
+      <group position={[0, 0, depth / 2 - 0.005]}>
+        {/* Curved Spine Cylinder Segment */}
         <mesh
           scale={[1, 1, 0.45]}
           material={materials.spineMat}
@@ -396,7 +443,7 @@ export function Book3D({
               thickness / 2,
               thickness / 2,
               height,
-              20,
+              24,
               1,
               false,
               -Math.PI / 2,
@@ -405,58 +452,23 @@ export function Book3D({
           />
         </mesh>
 
-        {/* 5 Raised 3D Horizontal Rib Bands catching realistic light */}
-        {bandRelYs.map((by, idx) => (
-          <mesh
-            key={idx}
-            position={[0, by, (thickness / 2) * 0.45 + 0.003]}
-            scale={[1, 0.4, 0.5]}
-            material={materials.raisedRibMat}
-            castShadow
-          >
-            <cylinderGeometry
-              args={[
-                thickness / 2 + 0.006,
-                thickness / 2 + 0.006,
-                0.02,
-                16,
-                1,
-                false,
-                -Math.PI / 2,
-                Math.PI,
-              ]}
-            />
-          </mesh>
-        ))}
-
-        {/* Headband woven fabric trim at top and bottom */}
-        <mesh position={[0, height / 2 - 0.008, 0]} material={materials.raisedRibMat}>
-          <boxGeometry args={[thickness - 0.016, 0.014, 0.01]} />
+        {/* Woven Fabric Headband / Tailband Trim */}
+        <mesh position={[0, height / 2 - 0.005, -0.005]} material={materials.headbandMat}>
+          <boxGeometry args={[thickness - 0.008, 0.01, 0.012]} />
         </mesh>
-        <mesh position={[0, -height / 2 + 0.008, 0]} material={materials.raisedRibMat}>
-          <boxGeometry args={[thickness - 0.016, 0.014, 0.01]} />
+        <mesh position={[0, -height / 2 + 0.005, -0.005]} material={materials.headbandMat}>
+          <boxGeometry args={[thickness - 0.008, 0.01, 0.012]} />
         </mesh>
       </group>
 
       {/* ========================================================= */}
-      {/* D. SATIN RIBBON BOOKMARK DRAPING DOWN                     */}
-      {/* ========================================================= */}
-      <mesh
-        position={[0.02, -height * 0.15, depth / 2 + 0.008]}
-        rotation={[0.04, 0.05, -0.08]}
-        material={materials.ribbonMat}
-      >
-        <planeGeometry args={[0.022, height * 0.7]} />
-      </mesh>
-
-      {/* ========================================================= */}
-      {/* E. FLOATING INTERACTION TOOLTIP                           */}
+      {/* D. FLOATING INTERACTION TOOLTIP                           */}
       {/* ========================================================= */}
       {hovered && (
         <Html
-          position={[0, height / 2 + 0.35, depth / 2 + 0.12]}
+          position={[0, height / 2 + 0.16, depth / 2 + 0.06]}
           center
-          distanceFactor={5.5}
+          distanceFactor={4.8}
           style={{ pointerEvents: 'none' }}
         >
           <div className="bg-neutral-950/95 backdrop-blur-xl text-white border border-amber-500/50 rounded-2xl px-4 py-3 shadow-[0_20px_50px_rgba(0,0,0,0.85)] flex flex-col whitespace-nowrap pointer-events-none transform -translate-y-2 transition-all">
@@ -466,16 +478,16 @@ export function Book3D({
                 {book.title}
               </span>
             </div>
-            <div className="flex items-center gap-2 mt-1.5 text-[11px] text-neutral-300">
+            <div className="flex items-center gap-2 mt-1 text-[11px] text-neutral-300">
               <span className="text-amber-400 font-semibold">{book.year}</span>
               <span className="text-neutral-500">•</span>
               <span>{book.pages} pages</span>
               <span className="text-neutral-500">•</span>
-              <span className="text-emerald-400 font-medium">Museum Leather-bound</span>
+              <span className="text-emerald-400 font-medium">Hardcover Edition</span>
             </div>
             {isShelfInspected && (
-              <span className="mt-2 text-[10px] text-amber-300 font-medium tracking-wide">
-                ✦ Click to open volume synopsis
+              <span className="mt-1.5 text-[10px] text-amber-300 font-medium tracking-wide">
+                ✦ Click to view literary synopsis
               </span>
             )}
           </div>

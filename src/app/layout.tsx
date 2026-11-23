@@ -14,9 +14,9 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "VERTEX — 3D Interactive Library Corridor",
+  title: "Yshelf — 3D Interactive Library Corridor",
   description:
-    "An immersive 3D curved library corridor built with Next.js, Three.js, React Three Fiber, GSAP, and Tailwind CSS.",
+    "An immersive 3D curved wooden library corridor featuring wall-mounted geometric bookshelves, realistic 3D books, and curated author exhibits.",
 };
 
 export default function RootLayout({
@@ -27,7 +27,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#f8fafc] text-neutral-900`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#120b06] text-neutral-100`}
       >
         {children}
       </body>

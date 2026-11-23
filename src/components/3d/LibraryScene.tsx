@@ -35,15 +35,15 @@ function CameraRig({
       // -----------------------------------------------------------
       const transform = shelfTransforms.get(inspectedShelf.id);
       if (transform) {
-        // Camera positioned to frame the entire museum bookcase including top pediment & brass plaque
+        // Camera positioned to frame the wall-mounted white bookcase and brass plaque
         const targetCamPos = transform.pos
           .clone()
-          .add(transform.frontVec.clone().multiplyScalar(4.55));
-        targetCamPos.y = transform.pos.y + 0.22;
+          .add(transform.frontVec.clone().multiplyScalar(3.5));
+        targetCamPos.y = transform.pos.y + 0.15;
 
-        // Look at center of the entire bookcase
+        // Look at center of the wall-mounted bookcase
         const targetLookAt = transform.pos.clone();
-        targetLookAt.y = transform.pos.y + 0.22;
+        targetLookAt.y = transform.pos.y + 0.15;
 
         camera.position.lerp(targetCamPos, lerpFactor);
         currentLookAt.current.lerp(targetLookAt, lerpFactor);
@@ -58,13 +58,13 @@ function CameraRig({
       // Camera position on curve
       const pathPoint = tunnelCurve.getPointAt(clampedProgress);
       const targetCamPos = pathPoint.clone();
-      targetCamPos.y = 0.2; // Eye height
+      targetCamPos.y = 0.22; // Eye height
 
       // Look ahead along the curve's turn
       const lookAheadProgress = Math.min(0.999, clampedProgress + 0.045);
       const lookAheadPoint = tunnelCurve.getPointAt(lookAheadProgress);
       const targetLookAt = lookAheadPoint.clone();
-      targetLookAt.y = 0.05;
+      targetLookAt.y = 0.15;
 
       camera.position.lerp(targetCamPos, lerpFactor);
       currentLookAt.current.lerp(targetLookAt, lerpFactor);
@@ -92,10 +92,10 @@ export default function LibraryScene({ scrollProgress }: LibrarySceneProps) {
       const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
 
       const isLeft = shelf.side === 'left';
-      // Offset from center corridor wall
-      const offsetDist = isLeft ? -2.45 : 2.45;
+      // Offset from center corridor wall (attached cleanly to wooden wall)
+      const offsetDist = isLeft ? -3.12 : 3.12;
       const shelfPos = pt.clone().add(normal.clone().multiplyScalar(offsetDist));
-      shelfPos.y = -0.65; // On floor
+      shelfPos.y = 0.08; // Wall-mounted floating level
 
       // Direction vector pointing from the bookshelf directly into the center corridor aisle
       const inwardDir = pt.clone().sub(shelfPos).setY(0).normalize();
@@ -140,24 +140,24 @@ export default function LibraryScene({ scrollProgress }: LibrarySceneProps) {
   }, []);
 
   return (
-    <div className="w-full h-full relative bg-[#f8fafc]">
+    <div className="w-full h-full relative bg-[#120b06]">
       <Canvas
-        camera={{ fov: 55, near: 0.1, far: 180, position: [0, 0.2, 8] }}
+        camera={{ fov: 55, near: 0.1, far: 180, position: [0, 0.22, 8] }}
         gl={{
           antialias: true,
           toneMapping: THREE.ACESFilmicToneMapping,
-          toneMappingExposure: 1.15,
+          toneMappingExposure: 1.2,
         }}
-        style={{ width: '100%', height: '100%', display: 'block', background: '#f8fafc' }}
+        style={{ width: '100%', height: '100%', display: 'block', background: '#120b06' }}
       >
-        {/* Soft atmospheric white depth fog */}
-        <fog attach="fog" args={['#f8fafc', 8, 55]} />
+        {/* Warm atmospheric library depth fog */}
+        <fog attach="fog" args={['#160e08', 7, 58]} />
 
-        {/* Global Multi-directional Gallery Lighting (100% offline, zero network) */}
-        <ambientLight intensity={0.75} color="#ffffff" />
-        <hemisphereLight args={['#ffffff', '#e2e8f0', 0.5]} />
-        <directionalLight position={[14, 22, 10]} intensity={1.1} color="#ffffff" />
-        <directionalLight position={[-14, 16, -10]} intensity={0.6} color="#f8fafc" />
+        {/* Global Multi-directional Gallery Lighting */}
+        <ambientLight intensity={0.9} color="#fff8ee" />
+        <hemisphereLight args={['#fff5e6', '#3b2210', 0.7]} />
+        <directionalLight position={[14, 22, 10]} intensity={1.3} color="#fff3e0" castShadow />
+        <directionalLight position={[-14, 16, -10]} intensity={0.8} color="#fdecd9" />
 
         {/* Camera controller */}
         <CameraRig

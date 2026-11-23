@@ -1,6 +1,6 @@
-# 3dbook-web
+# Yshelf
 
-An immersive 3D interactive museum library website featuring a curved architectural gallery corridor, handcrafted antique bookcases, realistic 3D books with pop-out interactions, and engraved museum brass plaques.
+An immersive 3D interactive museum library website featuring a curved architectural gallery corridor, wall-mounted geometric designer bookshelves, realistic 3D books with pop-out interactions, and clear author plaques.
 
 ## 🚀 Technologies
 - **Framework**: Next.js 14 (App Router) + React 18 + TypeScript

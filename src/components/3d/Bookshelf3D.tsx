@@ -2,9 +2,11 @@
 
 import { useRef, useState, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { BookshelfItem, BookItem } from '@/types/library';
 import { Book3D } from './Book3D';
+import { Plant3D } from './Plant3D';
 
 interface Bookshelf3DProps {
   shelf: BookshelfItem;
@@ -26,201 +28,160 @@ export function Bookshelf3D({
   const groupRef = useRef<THREE.Group>(null!);
   const [shelfHovered, setShelfHovered] = useState(false);
 
-  // Grand Museum Bookcase Dimensions
-  const width = 2.5;
-  const height = 3.7;
-  const depth = 0.85;
-  const halfW = width / 2;
-  const columnWidth = 0.16;
-  const innerW = width - columnWidth * 2;
+  // =====================================================================
+  // 1. DIMENSIONS & ASYMMETRIC STEPPED GEOMETRY (Matching Reference Image)
+  // =====================================================================
+  const width = 2.4;
+  const height = 1.75;
+  const depth = 0.44;
+  const boardThick = 0.052; // Chunky 5.2cm uniform designer boards
 
-  // Shelving tier levels (Y positions of shelf surfaces)
-  const lowerShelfY = -0.55;
-  const upperShelfY = 0.58;
-  const baseShelfY = -height / 2 + 0.18;
+  const innerW = width - 2 * boardThick;
+  const innerH = height - 2 * boardThick;
+  const innerLeft = -innerW / 2;
+  const innerBottom = -innerH / 2;
 
-  // -----------------------------------------------------------------
-  // 1. PROCEDURAL ANTIQUE MAHOGANY WOOD TEXTURE (1024 x 1024)
-  // -----------------------------------------------------------------
-  const antiqueWoodTexture = useMemo(() => {
-    if (typeof window === 'undefined') return undefined;
-    const canvas = document.createElement('canvas');
-    canvas.width = 1024;
-    canvas.height = 1024;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return undefined;
+  // Normalized coordinate helper for internal dividers
+  const getX = (normX: number) => innerLeft + normX * innerW;
+  const getY = (normY: number) => innerBottom + normY * innerH;
 
-    // Deep rich antique Cuban mahogany base
-    ctx.fillStyle = '#2a1408';
-    ctx.fillRect(0, 0, 1024, 1024);
+  // =====================================================================
+  // 2. MATERIALS: PURE SATIN WHITE LACQUER & MODERN ACCENTS
+  // =====================================================================
+  const materials = useMemo(() => {
+    // Pure Architectural Satin White Lacquer
+    const whiteSatinMaterial = new THREE.MeshStandardMaterial({
+      color: '#ffffff',
+      roughness: 0.28,
+      metalness: 0.02,
+    });
 
-    // Flowing wood grain rings and figure
-    for (let i = 0; i < 60; i++) {
-      const y = (i / 60) * 1024;
-      const grad = ctx.createLinearGradient(0, y, 1024, y + 25);
-      grad.addColorStop(0, 'rgba(68, 32, 14, 0.6)');
-      grad.addColorStop(0.3, 'rgba(84, 40, 18, 0.8)');
-      grad.addColorStop(0.7, 'rgba(52, 24, 10, 0.6)');
-      grad.addColorStop(1, 'rgba(34, 16, 7, 0.9)');
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, y, 1024, 18);
-    }
+    // Back Panel
+    const backPanelMaterial = new THREE.MeshStandardMaterial({
+      color: '#f8f8fa',
+      roughness: 0.45,
+      metalness: 0.01,
+    });
 
-    // Micro wood pores and fibers
-    const imgData = ctx.getImageData(0, 0, 1024, 1024);
-    const d = imgData.data;
-    for (let i = 0; i < d.length; i += 4) {
-      const noise = (Math.random() - 0.5) * 16;
-      d[i] = Math.min(255, Math.max(0, d[i] + noise));
-      d[i + 1] = Math.min(255, Math.max(0, d[i + 1] + noise * 0.6));
-      d[i + 2] = Math.min(255, Math.max(0, d[i + 2] + noise * 0.3));
-    }
-    ctx.putImageData(imgData, 0, 0);
+    // Sleek Brushed Brass Accents
+    const brassMaterial = new THREE.MeshStandardMaterial({
+      color: '#d4af37',
+      roughness: 0.22,
+      metalness: 0.85,
+    });
 
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    tex.generateMipmaps = false;
-    tex.minFilter = THREE.LinearFilter;
-    tex.magFilter = THREE.LinearFilter;
-    tex.needsUpdate = true;
-    return tex;
+    // Modern Ceramic Vase Material
+    const ceramicMaterial = new THREE.MeshStandardMaterial({
+      color: '#e8e2d8',
+      roughness: 0.6,
+      metalness: 0.02,
+    });
+
+    return {
+      whiteSatinMaterial,
+      backPanelMaterial,
+      brassMaterial,
+      ceramicMaterial,
+    };
   }, []);
 
-  // -----------------------------------------------------------------
-  // 2. ULTRA-CRISP 4K ENGRAVED MUSEUM BRASS AUTHOR PLAQUE (2048 x 640)
-  // Razor-sharp vector-like clarity with zero blurriness
-  // -----------------------------------------------------------------
+  // =====================================================================
+  // 3. PHYSICAL 4K ENGRAVED MUSEUM BRASS AUTHOR PLAQUE (2048 x 560)
+  // =====================================================================
   const plaqueTexture = useMemo(() => {
     if (typeof window === 'undefined') return undefined;
     const canvas = document.createElement('canvas');
     canvas.width = 2048;
-    canvas.height = 640;
+    canvas.height = 560;
     const ctx = canvas.getContext('2d');
     if (!ctx) return undefined;
 
-    // A. Rich Hand-Polished Antique Brushed Brass Background
-    const brassGrad = ctx.createLinearGradient(0, 0, 2048, 640);
-    brassGrad.addColorStop(0, '#d4a244');
-    brassGrad.addColorStop(0.2, '#f6d278');
-    brassGrad.addColorStop(0.5, '#e0b050');
-    brassGrad.addColorStop(0.8, '#f9dc88');
-    brassGrad.addColorStop(1, '#c59235');
-    ctx.fillStyle = brassGrad;
-    ctx.fillRect(0, 0, 2048, 640);
+    // High-end brushed warm brass plate
+    const bgGrad = ctx.createLinearGradient(0, 0, 2048, 560);
+    bgGrad.addColorStop(0, '#e5be65');
+    bgGrad.addColorStop(0.25, '#fae19a');
+    bgGrad.addColorStop(0.5, '#edd080');
+    bgGrad.addColorStop(0.75, '#fae3a5');
+    bgGrad.addColorStop(1, '#d8af4f');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, 2048, 560);
 
-    // Subtle horizontal brushed brass directional grain
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
-    for (let y = 0; y < 640; y += 4) {
+    // Subtle brushed metal sheen lines
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+    for (let y = 0; y < 560; y += 4) {
       ctx.fillRect(0, y, 2048, 1.5);
     }
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
-    for (let y = 2; y < 640; y += 6) {
-      ctx.fillRect(0, y, 2048, 1);
-    }
 
-    // B. Deep Black Enamel Engraved Border Channels
-    // Heavy outer beveled border
-    ctx.strokeStyle = '#181206';
-    ctx.lineWidth = 14;
-    ctx.strokeRect(28, 28, 1992, 584);
+    // Outer and Inner Precision Border
+    ctx.strokeStyle = '#221808';
+    ctx.lineWidth = 10;
+    ctx.strokeRect(20, 20, 2008, 520);
 
-    // Inner bright gold highlight line
-    ctx.strokeStyle = '#fff3c4';
-    ctx.lineWidth = 4;
-    ctx.strokeRect(40, 40, 1968, 560);
+    ctx.strokeStyle = '#fff5cf';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(32, 32, 1984, 496);
 
-    // Secondary engraved black filigree border
-    ctx.strokeStyle = '#2d1f08';
-    ctx.lineWidth = 4;
-    ctx.strokeRect(56, 56, 1936, 528);
-
-    // C. 4 Authentic Antique Slotted Brass Screws in Corners
-    const screwPositions = [
-      [80, 80],
-      [1968, 80],
-      [80, 560],
-      [1968, 560],
+    // Corner brass mounting bolts
+    const corners = [
+      [64, 64],
+      [1984, 64],
+      [64, 496],
+      [1984, 496],
     ];
-    screwPositions.forEach(([sx, sy]) => {
-      // Screw rim
+    corners.forEach(([cx, cy]) => {
       ctx.fillStyle = '#9e731b';
       ctx.beginPath();
-      ctx.arc(sx, sy, 22, 0, Math.PI * 2);
+      ctx.arc(cx, cy, 16, 0, Math.PI * 2);
       ctx.fill();
-
-      // Screw head
       ctx.fillStyle = '#fce498';
       ctx.beginPath();
-      ctx.arc(sx, sy, 18, 0, Math.PI * 2);
+      ctx.arc(cx, cy, 12, 0, Math.PI * 2);
       ctx.fill();
-
-      // Screw center slot
-      ctx.strokeStyle = '#1c1203';
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(sx - 12, sy - 12);
-      ctx.lineTo(sx + 12, sy + 12);
-      ctx.stroke();
     });
 
-    // D. Header: Museum Hall / Classical Archive Seal
-    ctx.fillStyle = '#261805';
-    ctx.font = 'bold 36px "Cinzel", "Georgia", "Times New Roman", serif';
+    // Sub-header: Collection Label
+    ctx.fillStyle = '#3a270b';
+    ctx.font = 'bold 34px "Cinzel", "Georgia", serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.letterSpacing = '10px';
-    ctx.fillText('GRAND MUSÉE DE LITTÉRATURE • ARCHIVES OFFICIELLES', 1024, 120);
+    ctx.letterSpacing = '8px';
+    ctx.fillText('YSHELF CURATED ARCHIVE • EXHIBIT COLLECTION', 1024, 110);
 
-    // Decorative horizontal flourish bar with center diamond
-    ctx.strokeStyle = '#4a320c';
-    ctx.lineWidth = 3;
+    // Divider Line
+    ctx.strokeStyle = '#4a3310';
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
-    ctx.moveTo(420, 170);
-    ctx.lineTo(1628, 170);
+    ctx.moveTo(400, 155);
+    ctx.lineTo(1648, 155);
     ctx.stroke();
 
-    // Center brass star/diamond
-    ctx.fillStyle = '#1c1203';
-    ctx.beginPath();
-    ctx.moveTo(1024, 158);
-    ctx.lineTo(1036, 170);
-    ctx.lineTo(1024, 182);
-    ctx.lineTo(1012, 170);
-    ctx.closePath();
-    ctx.fill();
-
-    // E. AUTHOR NAME - MASSIVE, DEEP BLACK ENAMEL ENGRAVED (ULTRA CRISP)
+    // AUTHOR NAME (Massive, crisp, deep black enamel lettering)
     ctx.save();
-    // Engraved highlight (simulates sunlit bevel inside the engraved letters)
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-    ctx.font = '900 115px "Cinzel", "Playfair Display", "Times New Roman", Georgia, serif';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.font = '900 112px "Cinzel", "Playfair Display", "Times New Roman", serif';
     ctx.letterSpacing = '6px';
-    ctx.fillText(shelf.author.toUpperCase(), 1026, 308);
+    ctx.fillText(shelf.author.toUpperCase(), 1026, 276);
 
-    // Deep crisp jet-black enamel lettering
-    ctx.fillStyle = '#0a0703';
-    ctx.fillText(shelf.author.toUpperCase(), 1024, 304);
+    ctx.fillStyle = '#110b03';
+    ctx.fillText(shelf.author.toUpperCase(), 1024, 272);
     ctx.restore();
 
-    // F. Genre / Era Ribbon Seal
-    ctx.fillStyle = '#1c1305';
+    // Genre Tag Capsule
+    ctx.fillStyle = '#1e1406';
     ctx.beginPath();
-    ctx.roundRect(1024 - 440, 440, 880, 84, 42);
+    ctx.roundRect(1024 - 380, 385, 760, 75, 38);
     ctx.fill();
 
-    // Gold inner border on ribbon
-    ctx.strokeStyle = '#d4a244';
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#d4af37';
+    ctx.lineWidth = 2.5;
     ctx.stroke();
 
     ctx.fillStyle = '#fae19a';
-    ctx.font = '700 40px "Cinzel", "Georgia", -apple-system, serif';
+    ctx.font = '700 36px "Cinzel", "Georgia", serif';
     ctx.letterSpacing = '3px';
-    ctx.fillText(shelf.genre.toUpperCase(), 1024, 482);
+    ctx.fillText(shelf.genre.toUpperCase(), 1024, 423);
 
     const tex = new THREE.CanvasTexture(canvas);
-    // Crucial: Disable mipmaps to ensure 100% full-resolution sharpness without blur
     tex.generateMipmaps = false;
     tex.minFilter = THREE.LinearFilter;
     tex.magFilter = THREE.LinearFilter;
@@ -228,100 +189,30 @@ export function Bookshelf3D({
     return tex;
   }, [shelf.author, shelf.genre]);
 
-  // -----------------------------------------------------------------
-  // 3. ARCHITECTURAL MATERIALS
-  // -----------------------------------------------------------------
-  const materials = useMemo(() => {
-    // Rich Cuban Antique Handcrafted Mahogany
-    const mahoganyMaterial = new THREE.MeshStandardMaterial({
-      map: antiqueWoodTexture,
-      color: '#381c0c',
-      roughness: 0.32,
-      metalness: 0.06,
-      emissive: '#180a03',
-      emissiveIntensity: 0.12,
-    });
+  const plaqueFaceMaterial = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        map: plaqueTexture,
+        toneMapped: false,
+        side: THREE.DoubleSide,
+      }),
+    [plaqueTexture]
+  );
 
-    // Dark carved trim highlights
-    const carvedWoodMaterial = new THREE.MeshStandardMaterial({
-      color: '#281206',
-      roughness: 0.4,
-      metalness: 0.08,
-      emissive: '#120702',
-      emissiveIntensity: 0.08,
-    });
-
-    // Antique Museum Heavy Cast Brass
-    const antiqueBrassMaterial = new THREE.MeshStandardMaterial({
-      color: '#d4a244',
-      roughness: 0.24,
-      metalness: 0.88,
-      emissive: '#664614',
-      emissiveIntensity: 0.15,
-    });
-
-    // Razor-Sharp Plaque Face Material (Self-illuminated so 100% visible from afar)
-    const plaqueFaceMaterial = new THREE.MeshBasicMaterial({
-      map: plaqueTexture,
-      toneMapped: false,
-      side: THREE.DoubleSide,
-    });
-
-    // Fluted dark panel backing
-    const backboardMaterial = new THREE.MeshStandardMaterial({
-      color: '#1a0b04',
-      roughness: 0.6,
-      metalness: 0.04,
-    });
-
-    // Brass picture lamp hooded shade material
-    const pictureLampMaterial = new THREE.MeshStandardMaterial({
-      color: '#c99a3e',
-      metalness: 0.9,
-      roughness: 0.2,
-      emissive: '#7a5416',
-      emissiveIntensity: 0.2,
-    });
-
-    return {
-      mahoganyMaterial,
-      carvedWoodMaterial,
-      antiqueBrassMaterial,
-      plaqueFaceMaterial,
-      backboardMaterial,
-      pictureLampMaterial,
-    };
-  }, [antiqueWoodTexture, plaqueTexture]);
-
-  // Gentle breathing idle floating motion when not inspected
+  // Subtle floating idle motion when not inspected
   useFrame((state) => {
     if (!groupRef.current) return;
     if (!isInspected) {
       const t = state.clock.elapsedTime;
-      groupRef.current.position.y = position[1] + Math.sin(t * 0.75 + shelf.t * 5) * 0.02;
+      groupRef.current.position.y = position[1] + Math.sin(t * 0.8 + shelf.t * 4) * 0.015;
     }
   });
 
-  // Standardized high-fidelity books for full capacity
-  const fullShelfBooks = useMemo(() => {
-    const list: BookItem[] = [];
-    while (list.length < 16) {
-      for (const b of shelf.books) {
-        list.push({
-          ...b,
-          id: `${b.id}-${list.length}`,
-        });
-        if (list.length >= 16) break;
-      }
-    }
-    return list;
-  }, [shelf.books]);
-
-  const lowerBooks = fullShelfBooks.slice(0, 8);
-  const upperBooks = fullShelfBooks.slice(8, 16);
-
-  // Natural subtle tilts for authentic library look
-  const naturalTilts = [0, 0.015, -0.018, 0, 0.02, 0, -0.015, 0];
+  // Distribute books across compartments
+  const books = shelf.books;
+  const zone5Books = books.slice(0, 3); // Lower-left cubby
+  const zone6Books = books.slice(3, 6); // Lower-right wide shelf
+  const featuredCoverBook = books[0];   // Displayed at an angle showing front cover
 
   return (
     <group
@@ -349,416 +240,347 @@ export function Bookshelf3D({
       }}
     >
       {/* ========================================================= */}
-      {/* 1. HANDCRAFTED ANTIQUE MUSEUM CABINETRY ARCHITECTURE      */}
+      {/* 1. CRYSTAL-CLEAR SCROLLING AUTHOR SIGNAGE (HTML BILLBOARD) */}
+      {/* Fully visible, crisp and readable while scrolling past!  */}
       {/* ========================================================= */}
-
-      {/* --------------------------------------------------------- */}
-      {/* A. LEFT & RIGHT FLUTED CLASSICAL PILASTER COLUMNS         */}
-      {/* --------------------------------------------------------- */}
-      {/* Left Column Group */}
-      <group position={[-halfW + columnWidth / 2, 0, 0]}>
-        {/* Main Column Body */}
-        <mesh material={materials.mahoganyMaterial} castShadow receiveShadow>
-          <boxGeometry args={[columnWidth, height - 0.5, depth]} />
-        </mesh>
-        {/* 3 Vertical Carved Fluting Channels along front */}
-        {[-0.04, 0, 0.04].map((fluteX, idx) => (
-          <mesh
-            key={idx}
-            position={[fluteX, 0, depth / 2 + 0.005]}
-            material={materials.carvedWoodMaterial}
-          >
-            <boxGeometry args={[0.02, height - 0.8, 0.01]} />
-          </mesh>
-        ))}
-        {/* Classical Column Capital at top */}
-        <mesh
-          position={[0, height / 2 - 0.35, depth / 2 + 0.01]}
-          material={materials.carvedWoodMaterial}
-          castShadow
-        >
-          <boxGeometry args={[columnWidth + 0.06, 0.14, 0.06]} />
-        </mesh>
-        {/* Column Plinth Base at bottom */}
-        <mesh
-          position={[0, -height / 2 + 0.35, depth / 2 + 0.01]}
-          material={materials.carvedWoodMaterial}
-          castShadow
-        >
-          <boxGeometry args={[columnWidth + 0.06, 0.22, 0.06]} />
-        </mesh>
-      </group>
-
-      {/* Right Column Group */}
-      <group position={[halfW - columnWidth / 2, 0, 0]}>
-        {/* Main Column Body */}
-        <mesh material={materials.mahoganyMaterial} castShadow receiveShadow>
-          <boxGeometry args={[columnWidth, height - 0.5, depth]} />
-        </mesh>
-        {/* 3 Vertical Carved Fluting Channels along front */}
-        {[-0.04, 0, 0.04].map((fluteX, idx) => (
-          <mesh
-            key={idx}
-            position={[fluteX, 0, depth / 2 + 0.005]}
-            material={materials.carvedWoodMaterial}
-          >
-            <boxGeometry args={[0.02, height - 0.8, 0.01]} />
-          </mesh>
-        ))}
-        {/* Classical Column Capital at top */}
-        <mesh
-          position={[0, height / 2 - 0.35, depth / 2 + 0.01]}
-          material={materials.carvedWoodMaterial}
-          castShadow
-        >
-          <boxGeometry args={[columnWidth + 0.06, 0.14, 0.06]} />
-        </mesh>
-        {/* Column Plinth Base at bottom */}
-        <mesh
-          position={[0, -height / 2 + 0.35, depth / 2 + 0.01]}
-          material={materials.carvedWoodMaterial}
-          castShadow
-        >
-          <boxGeometry args={[columnWidth + 0.06, 0.22, 0.06]} />
-        </mesh>
-      </group>
-
-      {/* --------------------------------------------------------- */}
-      {/* B. TOP ENTABLATURE, ARCHED PEDIMENT & DENTIL MOLDING     */}
-      {/* --------------------------------------------------------- */}
-      <group position={[0, height / 2 - 0.1, 0]}>
-        {/* Main Overhanging Classical Cornice */}
-        <mesh material={materials.mahoganyMaterial} castShadow receiveShadow>
-          <boxGeometry args={[width + 0.22, 0.12, depth + 0.08]} />
-        </mesh>
-        {/* Upper stepped frieze */}
-        <mesh position={[0, 0.08, 0]} material={materials.carvedWoodMaterial} castShadow>
-          <boxGeometry args={[width + 0.28, 0.06, depth + 0.12]} />
-        </mesh>
-
-        {/* 22 Handcrafted Classical Dentil Blocks along the frieze */}
-        {Array.from({ length: 22 }).map((_, idx) => {
-          const spacing = (width + 0.14) / 22;
-          const dx = -((width + 0.14) / 2) + idx * spacing + spacing / 2;
-          return (
-            <mesh
-              key={idx}
-              position={[dx, -0.06, depth / 2 + 0.03]}
-              material={materials.carvedWoodMaterial}
-              castShadow
-            >
-              <boxGeometry args={[0.045, 0.04, 0.04]} />
-            </mesh>
-          );
-        })}
-
-        {/* Arched Classical Pediment Peak (Top Center) */}
-        <group position={[0, 0.26, depth / 2 - 0.05]}>
-          <mesh material={materials.mahoganyMaterial} castShadow>
-            <cylinderGeometry args={[0.85, 0.85, 0.08, 32, 1, false, 0, Math.PI]} />
-          </mesh>
-          {/* Carved Central Medallion */}
-          <mesh
-            position={[0, 0.15, 0.05]}
-            material={materials.antiqueBrassMaterial}
-            castShadow
-          >
-            <cylinderGeometry args={[0.14, 0.14, 0.03, 24]} />
-          </mesh>
-        </group>
-      </group>
-
-      {/* --------------------------------------------------------- */}
-      {/* C. BOTTOM CARVED PLINTH BASE                             */}
-      {/* --------------------------------------------------------- */}
-      <group position={[0, -height / 2 + 0.09, 0]}>
-        <mesh material={materials.mahoganyMaterial} castShadow receiveShadow>
-          <boxGeometry args={[width + 0.18, 0.18, depth + 0.06]} />
-        </mesh>
-        {/* Stepped base floor molding */}
-        <mesh
-          position={[0, -0.07, 0]}
-          material={materials.carvedWoodMaterial}
-          castShadow
-          receiveShadow
-        >
-          <boxGeometry args={[width + 0.24, 0.06, depth + 0.1]} />
-        </mesh>
-      </group>
-
-      {/* --------------------------------------------------------- */}
-      {/* D. SHELVING TIERS & CARVED CORBEL BRACKETS                */}
-      {/* --------------------------------------------------------- */}
-      {/* Lower Shelf Tier */}
-      <group position={[0, lowerShelfY, 0.02]}>
-        {/* Solid Mahogany Shelf */}
-        <mesh material={materials.mahoganyMaterial} castShadow receiveShadow>
-          <boxGeometry args={[innerW, 0.07, depth - 0.04]} />
-        </mesh>
-        {/* Bullnose Carved Edge Trim */}
-        <mesh
-          position={[0, 0, (depth - 0.04) / 2 + 0.008]}
-          material={materials.carvedWoodMaterial}
-          castShadow
-        >
-          <boxGeometry args={[innerW, 0.04, 0.016]} />
-        </mesh>
-        {/* Left & Right Carved Support Corbels */}
-        <mesh
-          position={[-innerW / 2 + 0.06, -0.08, (depth - 0.04) / 2 - 0.06]}
-          material={materials.carvedWoodMaterial}
-          castShadow
-        >
-          <boxGeometry args={[0.07, 0.14, 0.14]} />
-        </mesh>
-        <mesh
-          position={[innerW / 2 - 0.06, -0.08, (depth - 0.04) / 2 - 0.06]}
-          material={materials.carvedWoodMaterial}
-          castShadow
-        >
-          <boxGeometry args={[0.07, 0.14, 0.14]} />
-        </mesh>
-      </group>
-
-      {/* Upper Shelf Tier */}
-      <group position={[0, upperShelfY, 0.02]}>
-        {/* Solid Mahogany Shelf */}
-        <mesh material={materials.mahoganyMaterial} castShadow receiveShadow>
-          <boxGeometry args={[innerW, 0.07, depth - 0.04]} />
-        </mesh>
-        {/* Bullnose Carved Edge Trim */}
-        <mesh
-          position={[0, 0, (depth - 0.04) / 2 + 0.008]}
-          material={materials.carvedWoodMaterial}
-          castShadow
-        >
-          <boxGeometry args={[innerW, 0.04, 0.016]} />
-        </mesh>
-        {/* Left & Right Carved Support Corbels */}
-        <mesh
-          position={[-innerW / 2 + 0.06, -0.08, (depth - 0.04) / 2 - 0.06]}
-          material={materials.carvedWoodMaterial}
-          castShadow
-        >
-          <boxGeometry args={[0.07, 0.14, 0.14]} />
-        </mesh>
-        <mesh
-          position={[innerW / 2 - 0.06, -0.08, (depth - 0.04) / 2 - 0.06]}
-          material={materials.carvedWoodMaterial}
-          castShadow
-        >
-          <boxGeometry args={[0.07, 0.14, 0.14]} />
-        </mesh>
-      </group>
-
-      {/* Back Panel - Antique dark wood boiserie */}
-      <mesh
-        position={[0, 0, -depth / 2 + 0.02]}
-        material={materials.backboardMaterial}
-        receiveShadow
+      <Html
+        position={[0, height / 2 + 0.45, depth / 2 + 0.06]}
+        center
+        distanceFactor={6.8}
+        style={{ pointerEvents: 'none' }}
       >
-        <boxGeometry args={[innerW, height - 0.3, 0.04]} />
+        <div className="flex flex-col items-center select-none pointer-events-none transform -translate-y-2 transition-transform duration-300">
+          <div className="flex items-center gap-3 px-5 py-2 rounded-full bg-neutral-950/90 backdrop-blur-xl border border-amber-500/60 shadow-[0_12px_40px_rgba(0,0,0,0.85)]">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse shadow-[0_0_10px_#f59e0b]" />
+            <span className="text-sm md:text-base font-black tracking-widest uppercase text-amber-200 drop-shadow-md whitespace-nowrap font-serif">
+              {shelf.author}
+            </span>
+            <span className="text-[10px] uppercase font-bold text-amber-300 bg-amber-950/90 px-2.5 py-0.5 rounded-full border border-amber-500/40 whitespace-nowrap hidden sm:inline">
+              {shelf.genre}
+            </span>
+          </div>
+          <span className="mt-1 text-[10px] font-semibold tracking-wider uppercase text-amber-300/90 bg-neutral-900/80 px-3 py-0.5 rounded-full border border-amber-400/30 backdrop-blur-md shadow-md whitespace-nowrap">
+            ✦ Click shelf to explore
+          </span>
+        </div>
+      </Html>
+
+      {/* ========================================================= */}
+      {/* 2. SOLID WALL MOUNT SPACER (Wall Attachment)              */}
+      {/* ========================================================= */}
+      <mesh position={[0, 0, -depth / 2 - 0.015]} material={materials.brassMaterial}>
+        <boxGeometry args={[width * 0.85, height * 0.8, 0.03]} />
       </mesh>
 
       {/* ========================================================= */}
-      {/* 2. RAZOR-SHARP ENGRAVED BRASS AUTHOR PLAQUE               */}
+      {/* 3. RECESSED BACK PANEL                                    */}
       {/* ========================================================= */}
-      <group position={[0, height / 2 + 0.42, 0.08]}>
-        {/* Solid Cast Brass Backing Plate with Beveled Rim */}
-        <mesh material={materials.antiqueBrassMaterial} castShadow>
-          <boxGeometry args={[2.28, 0.62, 0.06]} />
-        </mesh>
-        {/* Carved Mahogany Mounting Frame */}
-        <mesh position={[0, 0, -0.035]} material={materials.carvedWoodMaterial} castShadow>
-          <boxGeometry args={[2.34, 0.68, 0.03]} />
-        </mesh>
+      <mesh
+        position={[0, 0, -depth / 2 + 0.012]}
+        material={materials.backPanelMaterial}
+        receiveShadow
+      >
+        <boxGeometry args={[innerW, innerH, 0.02]} />
+      </mesh>
 
-        {/* Razor-Sharp 4K Plaque Face (Zero Blur, Crisp Vector Quality) */}
-        <mesh position={[0, 0, 0.035]} material={materials.plaqueFaceMaterial}>
-          <planeGeometry args={[2.22, 0.56]} />
-        </mesh>
+      {/* ========================================================= */}
+      {/* 4. OUTER PERIMETER FRAME (Chunky White Lacquer Boards)   */}
+      {/* ========================================================= */}
+      {/* Top Board */}
+      <mesh
+        position={[0, height / 2 - boardThick / 2, 0]}
+        material={materials.whiteSatinMaterial}
+        castShadow
+        receiveShadow
+      >
+        <boxGeometry args={[width, boardThick, depth]} />
+      </mesh>
 
-        {/* ------------------------------------------------------- */}
-        {/* ANTIQUE BRASS GOOSENECK PICTURE LAMP SHINING ON PLAQUE  */}
-        {/* ------------------------------------------------------- */}
-        <group position={[0, 0.45, 0.2]}>
-          {/* Curved Gooseneck Arm */}
-          <mesh material={materials.antiqueBrassMaterial} castShadow>
-            <cylinderGeometry args={[0.014, 0.014, 0.28, 16]} />
-          </mesh>
-          {/* Horizontal Hooded Reflector Shade */}
+      {/* Bottom Board */}
+      <mesh
+        position={[0, -height / 2 + boardThick / 2, 0]}
+        material={materials.whiteSatinMaterial}
+        castShadow
+        receiveShadow
+      >
+        <boxGeometry args={[width, boardThick, depth]} />
+      </mesh>
+
+      {/* Left Outer Board */}
+      <mesh
+        position={[-width / 2 + boardThick / 2, 0, 0]}
+        material={materials.whiteSatinMaterial}
+        castShadow
+        receiveShadow
+      >
+        <boxGeometry args={[boardThick, height - 2 * boardThick, depth]} />
+      </mesh>
+
+      {/* Right Outer Board */}
+      <mesh
+        position={[width / 2 - boardThick / 2, 0, 0]}
+        material={materials.whiteSatinMaterial}
+        castShadow
+        receiveShadow
+      >
+        <boxGeometry args={[boardThick, height - 2 * boardThick, depth]} />
+      </mesh>
+
+      {/* ========================================================= */}
+      {/* 5. ASYMMETRIC INTERNAL SHELVES & DIVIDERS                 */}
+      {/* ========================================================= */}
+
+      {/* A. Top Vertical Divider (drops from top y=1.0 down to upper shelf y=0.62 at x=0.40) */}
+      {(() => {
+        const topH = (1.0 - 0.62) * innerH;
+        const cy = getY((1.0 + 0.62) / 2);
+        const cx = getX(0.4);
+        return (
           <mesh
-            position={[0, 0.1, 0.12]}
-            rotation={[0, 0, Math.PI / 2]}
-            material={materials.pictureLampMaterial}
+            position={[cx, cy, 0]}
+            material={materials.whiteSatinMaterial}
             castShadow
+            receiveShadow
           >
-            <cylinderGeometry args={[0.045, 0.045, 0.85, 16]} />
+            <boxGeometry args={[boardThick, topH, depth - 0.01]} />
           </mesh>
-          {/* Warm Focused Museum Spotlight illuminating Plaque & Upper Tier */}
-          <pointLight
-            position={[0, 0.05, 0.16]}
-            intensity={1.6}
-            distance={3.2}
-            color="#fff2db"
-          />
-        </group>
+        );
+      })()}
+
+      {/* B. Upper Horizontal Shelf with CANTILEVERED LEFT WING */}
+      {/* Runs from x=0.16 to x=0.68 at y=0.62; left side floats freely without touching left wall! */}
+      {(() => {
+        const spanW = (0.68 - 0.16) * innerW;
+        const cx = getX((0.16 + 0.68) / 2);
+        const cy = getY(0.62);
+        return (
+          <mesh
+            position={[cx, cy, 0]}
+            material={materials.whiteSatinMaterial}
+            castShadow
+            receiveShadow
+          >
+            <boxGeometry args={[spanW, boardThick, depth - 0.01]} />
+          </mesh>
+        );
+      })()}
+
+      {/* C. Upper-Right Vertical Riser (drops from y=0.62 to y=0.42 at x=0.68) */}
+      {(() => {
+        const riserH = (0.62 - 0.42) * innerH + boardThick;
+        const cx = getX(0.68);
+        const cy = getY((0.62 + 0.42) / 2);
+        return (
+          <mesh
+            position={[cx, cy, 0]}
+            material={materials.whiteSatinMaterial}
+            castShadow
+            receiveShadow
+          >
+            <boxGeometry args={[boardThick, riserH, depth - 0.01]} />
+          </mesh>
+        );
+      })()}
+
+      {/* D. Mid-Right & Central Niche Continuous Shelf (at y=0.42 from x=0.42 to x=1.0) */}
+      {(() => {
+        const spanW = (1.0 - 0.42) * innerW;
+        const cx = getX((0.42 + 1.0) / 2);
+        const cy = getY(0.42);
+        return (
+          <mesh
+            position={[cx, cy, 0]}
+            material={materials.whiteSatinMaterial}
+            castShadow
+            receiveShadow
+          >
+            <boxGeometry args={[spanW, boardThick, depth - 0.01]} />
+          </mesh>
+        );
+      })()}
+
+      {/* E. Mid-Left Vertical Riser (drops from y=0.42 down to y=0.28 at x=0.42) */}
+      {(() => {
+        const riserH = (0.42 - 0.28) * innerH + boardThick;
+        const cx = getX(0.42);
+        const cy = getY((0.42 + 0.28) / 2);
+        return (
+          <mesh
+            position={[cx, cy, 0]}
+            material={materials.whiteSatinMaterial}
+            castShadow
+            receiveShadow
+          >
+            <boxGeometry args={[boardThick, riserH, depth - 0.01]} />
+          </mesh>
+        );
+      })()}
+
+      {/* F. Lower-Left Horizontal Shelf (runs from x=0.0 to x=0.42 at y=0.28) */}
+      {(() => {
+        const spanW = 0.42 * innerW;
+        const cx = getX(0.21);
+        const cy = getY(0.28);
+        return (
+          <mesh
+            position={[cx, cy, 0]}
+            material={materials.whiteSatinMaterial}
+            castShadow
+            receiveShadow
+          >
+            <boxGeometry args={[spanW, boardThick, depth - 0.01]} />
+          </mesh>
+        );
+      })()}
+
+      {/* G. Lower Vertical Divider (drops from y=0.28 down to base y=0.0 at x=0.42) */}
+      {(() => {
+        const divH = 0.28 * innerH;
+        const cx = getX(0.42);
+        const cy = getY(0.14);
+        return (
+          <mesh
+            position={[cx, cy, 0]}
+            material={materials.whiteSatinMaterial}
+            castShadow
+            receiveShadow
+          >
+            <boxGeometry args={[boardThick, divH, depth - 0.01]} />
+          </mesh>
+        );
+      })()}
+
+      {/* ========================================================= */}
+      {/* 6. STUNNING 3D POTTED PLANTS & GALLERY DECOR              */}
+      {/* ========================================================= */}
+
+      {/* Zone 1: Cantilevered Left Wing - Lush 3D Potted Plant with Cascading Vines */}
+      <Plant3D
+        position={[getX(0.24), getY(0.62) + boardThick / 2, 0.06]}
+        scale={0.95}
+      />
+
+      {/* Zone 2: Upper-Right Double-Height Area - Ceramic Vase & Featured Angled Book */}
+      <group position={[getX(0.86), getY(0.42) + boardThick / 2 + 0.20, 0.04]}>
+        <mesh material={materials.ceramicMaterial} castShadow>
+          <cylinderGeometry args={[0.075, 0.12, 0.40, 32]} />
+        </mesh>
+        <mesh position={[0, 0.22, 0]} material={materials.ceramicMaterial} castShadow>
+          <torusGeometry args={[0.065, 0.014, 16, 32]} />
+        </mesh>
+        <mesh position={[0, -0.19, 0]} material={materials.brassMaterial} castShadow>
+          <cylinderGeometry args={[0.125, 0.125, 0.02, 32]} />
+        </mesh>
       </group>
 
-      {/* Frontal Soft Light Illuminating Book Spines */}
+      {/* Featured Hardcover Book in Zone 2 angled to show its illustrated front cover */}
+      {featuredCoverBook && (
+        <group position={[getX(0.72), getY(0.42) + boardThick / 2, 0.04]}>
+          <Book3D
+            book={featuredCoverBook}
+            position={[0, 0, 0]}
+            rotationY={-0.38} // Angled so the front cover art is visible from the corridor!
+            tiltAngle={0.02}
+            isShelfInspected={isInspected}
+            onSelectBook={onSelectBook}
+          />
+        </group>
+      )}
+
+      {/* Zone 4: Central Letterbox Niche - Stacked Art Volumes */}
+      <group position={[getX(0.55), getY(0.42) + boardThick / 2 + 0.06, 0.03]}>
+        <mesh position={[0, 0.02, 0]} material={materials.whiteSatinMaterial} castShadow>
+          <boxGeometry args={[0.38, 0.035, 0.26]} />
+        </mesh>
+        <mesh
+          position={[0.01, 0.055, -0.01]}
+          rotation={[0, 0.05, 0]}
+          material={materials.brassMaterial}
+          castShadow
+        >
+          <boxGeometry args={[0.34, 0.035, 0.24]} />
+        </mesh>
+      </group>
+
+      {/* ========================================================= */}
+      {/* 7. REALISTIC 3D STANDING BOOKS (Pop-Out on Hover)         */}
+      {/* ========================================================= */}
+
+      {/* Zone 5: Lower-Left Cubby - Standing Hardcover Books */}
+      <group position={[getX(0.21), getY(0.0) + boardThick / 2, 0.04]}>
+        {zone5Books.map((book, idx) => {
+          const spacing = 0.13;
+          const startX = -((zone5Books.length - 1) * spacing) / 2;
+          const x = startX + idx * spacing;
+          return (
+            <Book3D
+              key={book.id}
+              book={book}
+              position={[x, 0, 0]}
+              tiltAngle={idx === 0 ? 0.025 : idx === 2 ? -0.02 : 0}
+              isShelfInspected={isInspected}
+              onSelectBook={onSelectBook}
+            />
+          );
+        })}
+      </group>
+
+      {/* Zone 6: Lower-Right Wide Shelf - Standing Books */}
+      <group position={[getX(0.65), getY(0.0) + boardThick / 2, 0.04]}>
+        {zone6Books.map((book, idx) => {
+          const spacing = 0.14;
+          const startX = -((zone6Books.length - 1) * spacing) / 2;
+          const x = startX + idx * spacing;
+          return (
+            <Book3D
+              key={book.id}
+              book={book}
+              position={[x, 0, 0]}
+              tiltAngle={idx === 1 ? 0.03 : 0}
+              isShelfInspected={isInspected}
+              onSelectBook={onSelectBook}
+            />
+          );
+        })}
+      </group>
+
+      {/* ========================================================= */}
+      {/* 8. WALL-MOUNTED BRASS AUTHOR PLAQUE ABOVE FLOATING SHELF  */}
+      {/* ========================================================= */}
+      <group position={[0, height / 2 + 0.38, -depth / 2 + 0.02]}>
+        <mesh material={materials.brassMaterial} castShadow>
+          <boxGeometry args={[2.08, 0.48, 0.04]} />
+        </mesh>
+        <mesh position={[0, 0, 0.025]} material={plaqueFaceMaterial}>
+          <planeGeometry args={[2.02, 0.42]} />
+        </mesh>
+      </group>
+
+      {/* ========================================================= */}
+      {/* 9. WARM SPOTLIGHTS WASHING OVER SHELF & BOOKS             */}
+      {/* ========================================================= */}
       <pointLight
-        position={[0, 0.1, 2.1]}
-        intensity={1.0}
+        position={[0, height / 2 + 0.75, depth * 1.3]}
+        intensity={2.2}
         distance={5.0}
+        color="#fff6e8"
+      />
+      <pointLight
+        position={[0, 0, depth * 1.6]}
+        intensity={1.2}
+        distance={4.0}
         color="#ffffff"
       />
 
-      {/* ========================================================= */}
-      {/* 3. 3D BOOKS ON SHELVES (CRYSTAL CLEAR REALISTIC BOOKS)    */}
-      {/* ========================================================= */}
-      {/* Lower Shelf Books */}
-      <group position={[0, lowerShelfY + 0.035, 0.08]}>
-        {/* Left Antique Heavy Brass Bookend */}
-        <mesh
-          position={[-0.98, 0.32, 0]}
-          material={materials.antiqueBrassMaterial}
-          castShadow
-        >
-          <boxGeometry args={[0.03, 0.64, 0.48]} />
-        </mesh>
-
-        {lowerBooks.map((book, idx) => {
-          const totalBooks = lowerBooks.length;
-          const spacing = 0.24;
-          const startX = -((totalBooks - 1) * spacing) / 2;
-          const x = startX + idx * spacing;
-          const tilt = naturalTilts[idx % naturalTilts.length];
-          return (
-            <Book3D
-              key={book.id}
-              book={book}
-              position={[x, 0, 0]}
-              tiltAngle={tilt}
-              isShelfInspected={isInspected}
-              onSelectBook={onSelectBook}
-            />
-          );
-        })}
-
-        {/* Right Antique Heavy Brass Bookend */}
-        <mesh
-          position={[0.98, 0.32, 0]}
-          material={materials.antiqueBrassMaterial}
-          castShadow
-        >
-          <boxGeometry args={[0.03, 0.64, 0.48]} />
-        </mesh>
-      </group>
-
-      {/* Upper Shelf Books */}
-      <group position={[0, upperShelfY + 0.035, 0.08]}>
-        {/* Left Antique Heavy Brass Bookend */}
-        <mesh
-          position={[-0.98, 0.32, 0]}
-          material={materials.antiqueBrassMaterial}
-          castShadow
-        >
-          <boxGeometry args={[0.03, 0.64, 0.48]} />
-        </mesh>
-
-        {upperBooks.map((book, idx) => {
-          const totalBooks = upperBooks.length;
-          const spacing = 0.24;
-          const startX = -((totalBooks - 1) * spacing) / 2;
-          const x = startX + idx * spacing;
-          const tilt = naturalTilts[(idx + 2) % naturalTilts.length];
-          return (
-            <Book3D
-              key={book.id}
-              book={book}
-              position={[x, 0, 0]}
-              tiltAngle={tilt}
-              isShelfInspected={isInspected}
-              onSelectBook={onSelectBook}
-            />
-          );
-        })}
-
-        {/* Right Antique Heavy Brass Bookend */}
-        <mesh
-          position={[0.98, 0.32, 0]}
-          material={materials.antiqueBrassMaterial}
-          castShadow
-        >
-          <boxGeometry args={[0.03, 0.64, 0.48]} />
-        </mesh>
-      </group>
-
-      {/* Base Level: Rare Antique Foliants & Museum Relic Stack */}
-      <group position={[0, baseShelfY + 0.07, 0.08]}>
-        {/* Left Stack of Large Leather-Bound Folios */}
-        <group position={[-0.6, 0.05, 0]}>
-          <mesh
-            position={[0, 0.035, 0]}
-            material={materials.carvedWoodMaterial}
-            castShadow
-          >
-            <boxGeometry args={[0.52, 0.07, 0.56]} />
-          </mesh>
-          <mesh
-            position={[0.02, 0.1, 0.01]}
-            rotation={[0, 0.04, 0]}
-            material={materials.antiqueBrassMaterial}
-            castShadow
-          >
-            <boxGeometry args={[0.46, 0.06, 0.5]} />
-          </mesh>
-        </group>
-
-        {/* Center Classical Museum Brass Armillary Sphere / Relic */}
-        <group position={[0, 0.24, 0]}>
-          <mesh material={materials.antiqueBrassMaterial} castShadow>
-            <torusGeometry args={[0.19, 0.022, 16, 32]} />
-          </mesh>
-          <mesh rotation={[Math.PI / 4, 0, 0]} material={materials.antiqueBrassMaterial}>
-            <torusGeometry args={[0.16, 0.018, 16, 32]} />
-          </mesh>
-          <mesh position={[0, -0.16, 0]} material={materials.carvedWoodMaterial} castShadow>
-            <cylinderGeometry args={[0.12, 0.15, 0.08, 24]} />
-          </mesh>
-        </group>
-
-        {/* Right Stack of Antique Monograph Volumes */}
-        <group position={[0.6, 0.05, 0]}>
-          <mesh
-            position={[0, 0.035, 0]}
-            material={materials.antiqueBrassMaterial}
-            castShadow
-          >
-            <boxGeometry args={[0.5, 0.07, 0.54]} />
-          </mesh>
-          <mesh
-            position={[-0.02, 0.1, -0.01]}
-            rotation={[0, -0.04, 0]}
-            material={materials.mahoganyMaterial}
-            castShadow
-          >
-            <boxGeometry args={[0.45, 0.06, 0.48]} />
-          </mesh>
-        </group>
-      </group>
-
-      {/* ========================================================= */}
-      {/* 4. HOVER CALLOUT INDICATOR                                */}
-      {/* ========================================================= */}
+      {/* Hover Selection Callout Ring */}
       {shelfHovered && !isInspected && (
-        <group position={[0, -height / 2 - 0.12, depth / 2 + 0.2]}>
+        <group position={[0, -height / 2 - 0.22, depth / 2 + 0.15]}>
           <mesh rotation={[-Math.PI / 2, 0, 0]}>
-            <ringGeometry args={[0.65, 0.88, 32]} />
+            <ringGeometry args={[0.65, 0.85, 32]} />
             <meshBasicMaterial
-              color="#d4a244"
+              color="#d4af37"
               transparent
-              opacity={0.9}
+              opacity={0.85}
               side={THREE.DoubleSide}
             />
           </mesh>
