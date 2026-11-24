@@ -22,7 +22,7 @@ global.FileReader = class FileReader {
 };
 
 async function generateBookshelfModel() {
-  console.log('Generating Bookshelf: 3 Main Tiers with Double-Height Split Center...');
+  console.log('Generating Modern Designer Bookshelf with Asymmetric Gallery Layout...');
 
   const scene = new THREE.Scene();
   scene.name = 'Modern_White_Bookshelf_Collection';
@@ -201,7 +201,7 @@ async function generateBookshelfModel() {
     pcb.position.set(xPos, yPos - 0.003, rearStripZ);
     stripGroup.add(pcb);
 
-    const diodeCount = Math.max(12, Math.floor(width / 0.04));
+    const diodeCount = Math.max(8, Math.floor(width / 0.04));
     const startX = xPos - (width - 0.04) / 2;
     const stepX = (width - 0.04) / (diodeCount - 1);
 
@@ -226,67 +226,126 @@ async function generateBookshelfModel() {
   }
 
   // =========================================================================
-  // 6. MODERN ARCHITECTURAL LAYOUT:
-  // 3 MAIN TIERS WITH DOUBLE-HEIGHT CENTER CUT IN HALF (2 GRAND VERTICAL NICHES)
+  // 6. MODERN DESIGNER INTERIOR LAYOUT (Asymmetrical Architectural Gallery)
   // =========================================================================
-  const usableHeight = ceilingBottomY - plinthTopY; // 1.932m
-  // 2 full horizontal shelves divide the space into:
-  // Top tier (1 unit), Center tier (2 units = DOUBLE HEIGHT), Bottom tier (1 unit)
-  const unitHeight = (usableHeight - 2 * boardThick) / 4; // 0.465m
-  const topTierHeight = unitHeight; // 0.465m
-  const bottomTierHeight = unitHeight; // 0.465m
-  const centerDoubleHeight = unitHeight * 2; // 0.930m (DOUBLE HEIGHT!)
+  // Horizontal shelf elevations:
+  // Top horizontal shelf dividing Top Tier from Middle section
+  const shelfTopY = 0.480;
+  // Bottom horizontal shelf dividing Middle section from Bottom Tier
+  const shelfBottomY = -0.504;
 
-  // Two horizontal shelves
-  const topShelfY = ceilingBottomY - topTierHeight - boardThick / 2; // +0.471m
-  const bottomShelfY = plinthTopY + bottomTierHeight + boardThick / 2; // -0.495m
+  // Primary Vertical Divider X coordinate (asymmetric 38% / 62% ratio)
+  // Left column width = 0.62m; Right column width = 1.032m
+  const colDividerX = -innerW / 2 + 0.62 + boardThick / 2; // -0.206m
 
+  // Left column center X and Right column center X:
+  const leftColCenterX = -innerW / 2 + 0.62 / 2; // -0.534m
+  const rightColCenterX = colDividerX + boardThick / 2 + 1.032 / 2; // +0.328m
+
+  // -------------------------------------------------------------------------
+  // A. FULL HORIZONTAL SHELVES (Top & Bottom spans)
+  // -------------------------------------------------------------------------
   const fullShelfGeo = new THREE.BoxGeometry(innerW, boardThick, depth - 0.015);
 
-  // Top Shelf (under top compartment)
-  const topShelf = new THREE.Mesh(fullShelfGeo, whiteLacquer);
-  topShelf.name = 'Top_Horizontal_Shelf';
-  topShelf.position.set(0, topShelfY, 0.005);
-  shelfGroup.add(topShelf);
+  const topHorizontalShelf = new THREE.Mesh(fullShelfGeo, whiteLacquer);
+  topHorizontalShelf.name = 'Top_Full_Horizontal_Shelf';
+  topHorizontalShelf.position.set(0, shelfTopY, 0.005);
+  shelfGroup.add(topHorizontalShelf);
 
-  // Bottom Shelf (above bottom compartment)
-  const bottomShelf = new THREE.Mesh(fullShelfGeo, whiteLacquer);
-  bottomShelf.name = 'Bottom_Horizontal_Shelf';
-  bottomShelf.position.set(0, bottomShelfY, 0.005);
-  shelfGroup.add(bottomShelf);
+  const bottomHorizontalShelf = new THREE.Mesh(fullShelfGeo, whiteLacquer);
+  bottomHorizontalShelf.name = 'Bottom_Full_Horizontal_Shelf';
+  bottomHorizontalShelf.position.set(0, shelfBottomY, 0.005);
+  shelfGroup.add(bottomHorizontalShelf);
 
   // -------------------------------------------------------------------------
-  // VERTICAL CENTER DIVIDER (Cuts the double-height center compartment in half)
-  // Creating two magnificent tall gallery display niches for decoration objects!
+  // B. MAIN ARCHITECTURAL VERTICAL DIVIDER
+  // Spans from bottom shelf up to top shelf (height = 0.948m)
   // -------------------------------------------------------------------------
-  const centerDividerHeight = centerDoubleHeight - 0.002; // 0.928m tall
-  const centerDividerCenterY = (topShelfY - boardThick / 2 + bottomShelfY + boardThick / 2) / 2; // -0.012m
+  const middleSectionHeight = shelfTopY - shelfBottomY - boardThick; // 0.948m (DOUBLE HEIGHT!)
+  const middleCenterY = (shelfTopY + shelfBottomY) / 2; // -0.012m
 
-  const centerDividerGeo = new THREE.BoxGeometry(boardThick, centerDividerHeight, depth - 0.02);
-  const centerDivider = new THREE.Mesh(centerDividerGeo, whiteLacquer);
-  centerDivider.name = 'Center_Double_Height_Vertical_Divider';
-  centerDivider.position.set(0, centerDividerCenterY, 0.005);
-  shelfGroup.add(centerDivider);
-
-  // Dimensions of each half niche in the double-height center:
-  const halfNicheWidth = (innerW - boardThick) / 2; // 0.826m wide x 0.930m tall!
-  const leftNicheCenterX = -innerW / 4 - boardThick / 4; // -0.431m
-  const rightNicheCenterX = innerW / 4 + boardThick / 4; // +0.431m
+  const mainDividerGeo = new THREE.BoxGeometry(boardThick, middleSectionHeight, depth - 0.02);
+  const mainDivider = new THREE.Mesh(mainDividerGeo, whiteLacquer);
+  mainDivider.name = 'Main_Asymmetric_Vertical_Divider';
+  mainDivider.position.set(colDividerX, middleCenterY, 0.005);
+  shelfGroup.add(mainDivider);
 
   // -------------------------------------------------------------------------
-  // COVE STRIP LIGHTING FOR THE 3-TIER DOUBLE-HEIGHT LAYOUT
+  // C. THE HERO DOUBLE-HEIGHT GALLERY SPACE (Left Side)
+  // On the LEFT side of the main divider:
+  // An uninterrupted 0.948m tall x 0.62m wide DOUBLE-HEIGHT gallery space!
+  // Perfect for tall vases, tall sculptures, trailing greenery, or vertical art!
+  // NO shelf divides this left space!
   // -------------------------------------------------------------------------
-  // 1. Top compartment (full-width, under ceiling)
+
+  // -------------------------------------------------------------------------
+  // D. RIGHT SIDE DESIGNER COMPARTMENTS
+  // On the RIGHT side of the main divider (width = 1.032m):
+  // 1. A middle shelf at y = -0.012m divides it horizontally into upper & lower
+  // -------------------------------------------------------------------------
+  const rightShelfWidth = 1.032;
+  const rightShelfGeo = new THREE.BoxGeometry(rightShelfWidth, boardThick, depth - 0.015);
+  const rightMiddleShelf = new THREE.Mesh(rightShelfGeo, whiteLacquer);
+  rightMiddleShelf.name = 'Right_Middle_Shelf';
+  rightMiddleShelf.position.set(rightColCenterX, middleCenterY, 0.005);
+  shelfGroup.add(rightMiddleShelf);
+
+  // 2. In the lower-right compartment, add an elegant vertical sub-divider
+  // creating two distinct modern book/display cubbies!
+  const lowerRightCubbyHeight = middleCenterY - shelfBottomY - boardThick; // ~0.456m
+  const lowerRightCubbyCenterY = (middleCenterY + shelfBottomY) / 2; // -0.258m
+  const subDividerX = rightColCenterX + 0.06; // slightly offset for modern rhythm (+0.388m)
+
+  const subDividerGeo = new THREE.BoxGeometry(boardThick, lowerRightCubbyHeight, depth - 0.02);
+  const subDivider = new THREE.Mesh(subDividerGeo, whiteLacquer);
+  subDivider.name = 'Lower_Right_Sub_Divider';
+  subDivider.position.set(subDividerX, lowerRightCubbyCenterY, 0.005);
+  shelfGroup.add(subDivider);
+
+  // -------------------------------------------------------------------------
+  // E. TOP & BOTTOM COMPARTMENTS ACCENTS
+  // Add a sleek vertical accent divider in the top compartment (left side)
+  // creating an intimate accent niche (0.42m) and a wide panoramic shelf (1.23m)!
+  // -------------------------------------------------------------------------
+  const topCompartmentHeight = ceilingBottomY - shelfTopY - boardThick / 2; // ~0.456m
+  const topCompartmentCenterY = (ceilingBottomY + shelfTopY + boardThick / 2) / 2; // +0.720m
+  const topDividerX = colDividerX; // Aligns with main column divider (-0.206m)
+
+  const topDividerGeo = new THREE.BoxGeometry(boardThick, topCompartmentHeight, depth - 0.02);
+  const topDivider = new THREE.Mesh(topDividerGeo, whiteLacquer);
+  topDivider.name = 'Top_Compartment_Divider';
+  topDivider.position.set(topDividerX, topCompartmentCenterY, 0.005);
+  shelfGroup.add(topDivider);
+
+  // -------------------------------------------------------------------------
+  // F. INTEGRATED COVE STRIP LIGHTING FOR EVERY COMPARTMENT
+  // -------------------------------------------------------------------------
+  // 1. Top-Left niche (under ceiling, width 0.62m)
   const topStripY = ceilingBottomY - 0.004;
-  shelfGroup.add(createLedStripAssembly(innerW * 0.94, 0, topStripY, 'Top_Compartment'));
+  shelfGroup.add(createLedStripAssembly(0.62 * 0.90, leftColCenterX, topStripY, 'Top_Left_Niche'));
 
-  // 2. Center Double-Height Niches (Left & Right niches, under Top Shelf)
-  const centerStripY = topShelfY - boardThick / 2 - 0.003;
-  shelfGroup.add(createLedStripAssembly(halfNicheWidth * 0.92, leftNicheCenterX, centerStripY, 'Center_Left_Double_Height_Niche'));
-  shelfGroup.add(createLedStripAssembly(halfNicheWidth * 0.92, rightNicheCenterX, centerStripY, 'Center_Right_Double_Height_Niche'));
+  // 2. Top-Right panoramic shelf (under ceiling, width 1.032m)
+  shelfGroup.add(createLedStripAssembly(1.032 * 0.92, rightColCenterX, topStripY, 'Top_Right_Shelf'));
 
-  // 3. Bottom compartment (full-width, under Bottom Shelf)
-  const bottomStripY = bottomShelfY - boardThick / 2 - 0.003;
+  // 3. Center-Left HERO DOUBLE-HEIGHT GALLERY SPACE (under top shelf, width 0.62m, cascades down 0.95m!)
+  const centerStripY = shelfTopY - boardThick / 2 - 0.003;
+  shelfGroup.add(createLedStripAssembly(0.62 * 0.90, leftColCenterX, centerStripY, 'Hero_Double_Height_Niche'));
+
+  // 4. Center-Right Upper shelf (under top shelf, width 1.032m)
+  shelfGroup.add(createLedStripAssembly(1.032 * 0.92, rightColCenterX, centerStripY, 'Center_Right_Upper_Shelf'));
+
+  // 5. Center-Right Lower cubbies (under middle shelf, y = -0.012m)
+  const lowerRightStripY = middleCenterY - boardThick / 2 - 0.003;
+  const cubby1W = (subDividerX - boardThick / 2) - (colDividerX + boardThick / 2); // ~0.55m
+  const cubby1X = (colDividerX + boardThick / 2 + subDividerX - boardThick / 2) / 2;
+  const cubby2W = (rightColCenterX + rightShelfWidth / 2) - (subDividerX + boardThick / 2); // ~0.44m
+  const cubby2X = (subDividerX + boardThick / 2 + rightColCenterX + rightShelfWidth / 2) / 2;
+
+  shelfGroup.add(createLedStripAssembly(cubby1W * 0.88, cubby1X, lowerRightStripY, 'Center_Right_Lower_Cubby_1'));
+  shelfGroup.add(createLedStripAssembly(cubby2W * 0.88, cubby2X, lowerRightStripY, 'Center_Right_Lower_Cubby_2'));
+
+  // 6. Bottom compartment (under bottom shelf, full width 1.688m)
+  const bottomStripY = shelfBottomY - boardThick / 2 - 0.003;
   shelfGroup.add(createLedStripAssembly(innerW * 0.94, 0, bottomStripY, 'Bottom_Compartment'));
 
   scene.add(shelfGroup);
@@ -313,7 +372,7 @@ async function generateBookshelfModel() {
   const gltfSize = (fs.statSync(gltfPath).size / 1024).toFixed(1);
   console.log(`Saved ${gltfPath} (${gltfSize} KB)`);
 
-  console.log('Bookshelf with Double-Height Split Center Generated Successfully!');
+  console.log('Modern Designer Bookshelf Generated Successfully!');
 }
 
 generateBookshelfModel().catch(console.error);

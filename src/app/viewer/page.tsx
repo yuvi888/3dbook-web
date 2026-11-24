@@ -6,17 +6,23 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, useGLTF, ContactShadows } from '@react-three/drei';
 import Link from 'next/link';
 
-// Fixed warm LED intensity at 30% as requested
+// Fixed warm LED intensity at 30%
 const FIXED_LED_INTENSITY = 0.3;
 
-// Light points distributed across the 3 main tiers (with double-height center)
+// Light points mapped specifically to each modern compartment
 const LIGHT_CONFIGS = [
-  // Top Compartment (Full Width, y = 0.95m)
-  { y: 0.95, xs: [-0.6, -0.3, 0.0, 0.3, 0.6] },
-  // Center Double-Height Niches (Left & Right halves, y = 0.45m)
-  { y: 0.45, xs: [-0.64, -0.43, -0.22, 0.22, 0.43, 0.64] },
-  // Bottom Compartment (Full Width, y = -0.51m)
-  { y: -0.51, xs: [-0.6, -0.3, 0.0, 0.3, 0.6] },
+  // Top-Left niche (y = 0.95m)
+  { y: 0.95, xs: [-0.64, -0.42] },
+  // Top-Right panoramic shelf (y = 0.95m)
+  { y: 0.95, xs: [-0.05, 0.25, 0.55, 0.75] },
+  // Center-Left HERO DOUBLE-HEIGHT GALLERY NICHE (y = 0.46m, cascades down 0.95m tall alcove!)
+  { y: 0.46, xs: [-0.64, -0.42] },
+  // Center-Right upper shelf (y = 0.46m)
+  { y: 0.46, xs: [-0.05, 0.25, 0.55, 0.75] },
+  // Center-Right lower cubbies (y = -0.03m)
+  { y: -0.03, xs: [0.08, 0.60] },
+  // Bottom full-width shelf (y = -0.52m)
+  { y: -0.52, xs: [-0.6, -0.3, 0.0, 0.3, 0.6] },
 ];
 
 function BookshelfModel({ autoRotate }: { autoRotate: boolean }) {
@@ -71,12 +77,12 @@ export default function ModelViewerPage() {
               3D Model Studio Inspector
             </h1>
             <p className="text-[11px] text-amber-400 font-mono">
-              bookshelf_minimal_white.glb (58.3 KB • Double-Height Split Center • Fixed 30% LED)
+              bookshelf_minimal_white.glb (87.2 KB • Modern Architectural Layout • Fixed 30% LED)
             </p>
           </div>
         </div>
 
-        {/* Status & Live Controls (Slider removed, fixed 30% LED status badge) */}
+        {/* Status & Live Controls */}
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-neutral-900 border border-white/10 text-xs">
             <span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.6)]"></span>
@@ -147,7 +153,7 @@ export default function ModelViewerPage() {
       {/* Bottom Hint */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 px-5 py-2 rounded-full bg-neutral-950/80 backdrop-blur-md border border-white/10 text-neutral-400 text-xs flex items-center gap-2 pointer-events-none shadow-2xl">
         <span className="text-amber-400">✦</span>
-        <span>Click & drag to rotate 360° • Scroll mouse wheel to zoom in & inspect double-height niches</span>
+        <span>Click & drag to rotate 360° • Scroll mouse wheel to zoom in & inspect architectural layout</span>
       </div>
     </div>
   );
