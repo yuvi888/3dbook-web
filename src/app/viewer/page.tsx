@@ -6,18 +6,22 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, useGLTF, ContactShadows } from '@react-three/drei';
 import Link from 'next/link';
 
-// Shelf Y elevations for the 4 cove strip tiers
-const SHELF_Y_LEVELS = [0.95, 0.46, -0.03, -0.52];
-// 5 distributed warm LED light points along the full width of each shelf
-const STRIP_X_OFFSETS = [-0.6, -0.3, 0.0, 0.3, 0.6];
+// Fixed warm LED intensity at 30% as requested
+const FIXED_LED_INTENSITY = 0.3;
 
-function BookshelfModel({
-  autoRotate,
-  ledIntensity,
-}: {
-  autoRotate: boolean;
-  ledIntensity: number;
-}) {
+// Light points distributed across the compartments
+const LIGHT_CONFIGS = [
+  // Top Compartment (Full Width, y = 0.95m)
+  { y: 0.95, xs: [-0.6, -0.3, 0.0, 0.3, 0.6] },
+  // Upper-Center Niches (Left & Right halves, y = 0.46m)
+  { y: 0.46, xs: [-0.64, -0.43, -0.22, 0.22, 0.43, 0.64] },
+  // Lower-Center Niches (Left & Right halves, y = -0.03m)
+  { y: -0.03, xs: [-0.64, -0.43, -0.22, 0.22, 0.43, 0.64] },
+  // Bottom Compartment (Full Width, y = -0.52m)
+  { y: -0.52, xs: [-0.6, -0.3, 0.0, 0.3, 0.6] },
+];
+
+function BookshelfModel({ autoRotate }: { autoRotate: boolean }) {
   const gltf = useGLTF('/models/bookshelf_minimal_white.glb') as any;
   const groupRef = useRef<any>();
 
@@ -31,15 +35,14 @@ function BookshelfModel({
     <group ref={groupRef} position={[0, 0, 0]}>
       <primitive object={gltf.scene.clone()} />
 
-      {/* Realistic full-width linear LED cove illumination */}
-      {/* Distributed soft warm emitters across the entire shelf width (zero center hotspot) */}
-      {SHELF_Y_LEVELS.map((y, tierIdx) =>
-        STRIP_X_OFFSETS.map((x, xIdx) => (
+      {/* Fixed 30% soft architectural LED cove backlighting */}
+      {LIGHT_CONFIGS.map((tier, tierIdx) =>
+        tier.xs.map((x, xIdx) => (
           <pointLight
-            key={`tier-${tierIdx}-pt-${xIdx}`}
-            position={[x, y, -0.15]}
+            key={`light-${tierIdx}-${xIdx}`}
+            position={[x, tier.y, -0.15]}
             color="#ffdfa4"
-            intensity={ledIntensity * 0.28}
+            intensity={FIXED_LED_INTENSITY * 0.28}
             distance={0.75}
             decay={2}
           />
@@ -53,7 +56,6 @@ useGLTF.preload('/models/bookshelf_minimal_white.glb');
 
 export default function ModelViewerPage() {
   const [autoRotate, setAutoRotate] = useState(false);
-  const [ledIntensity, setLedIntensity] = useState(0.4);
 
   return (
     <div className="w-full h-screen bg-[#111113] text-neutral-100 flex flex-col relative overflow-hidden select-none font-sans">
@@ -71,27 +73,17 @@ export default function ModelViewerPage() {
               3D Model Studio Inspector
             </h1>
             <p className="text-[11px] text-amber-400 font-mono">
-              bookshelf_minimal_white.glb (187.5 KB • Designer Curved Shelves & Full-Width LED Strips)
+              bookshelf_minimal_white.glb (76.6 KB • Split-Center Modern Styling • Fixed 30% LED)
             </p>
           </div>
         </div>
 
-        {/* Live Controls */}
-        <div className="flex items-center gap-4">
+        {/* Status & Live Controls (Slider removed, fixed 30% LED status badge) */}
+        <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-neutral-900 border border-white/10 text-xs">
+            <span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.6)]"></span>
             <span className="text-neutral-400">LED Glow:</span>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={ledIntensity}
-              onChange={(e) => setLedIntensity(parseFloat(e.target.value))}
-              className="w-20 accent-amber-500 cursor-pointer"
-            />
-            <span className="text-amber-300 font-mono text-[10px]">
-              {(ledIntensity * 100).toFixed(0)}%
-            </span>
+            <span className="text-amber-300 font-mono font-semibold">30% (Fixed)</span>
           </div>
 
           <button
@@ -122,16 +114,16 @@ export default function ModelViewerPage() {
           gl={{ antialias: true }}
           style={{ width: '100%', height: '100%' }}
         >
-          {/* Studio lighting matching reference photo */}
+          {/* Subtle studio lighting */}
           <ambientLight intensity={0.95} color="#fffcf7" />
           <directionalLight position={[0, 0, 4.0]} intensity={0.55} color="#ffffff" />
           <directionalLight position={[3, 4, 3]} intensity={0.45} color="#ffffff" />
           <directionalLight position={[-3, 4, 3]} intensity={0.35} color="#f8fafc" />
 
           <Suspense fallback={null}>
-            <BookshelfModel autoRotate={autoRotate} ledIntensity={ledIntensity} />
+            <BookshelfModel autoRotate={autoRotate} />
 
-            {/* Soft drop shadow strictly on the floor plane beneath base plinth (y = -1.045) */}
+            {/* Soft drop shadow strictly on floor plane beneath base plinth (y = -1.045m) */}
             <ContactShadows
               position={[0, -1.045, 0]}
               opacity={0.45}
@@ -157,7 +149,7 @@ export default function ModelViewerPage() {
       {/* Bottom Hint */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 px-5 py-2 rounded-full bg-neutral-950/80 backdrop-blur-md border border-white/10 text-neutral-400 text-xs flex items-center gap-2 pointer-events-none shadow-2xl">
         <span className="text-amber-400">✦</span>
-        <span>Click & drag to rotate 360° • Scroll mouse wheel to zoom in & inspect micro-LED diodes</span>
+        <span>Click & drag to rotate 360° • Scroll mouse wheel to zoom in & inspect compartments</span>
       </div>
     </div>
   );
