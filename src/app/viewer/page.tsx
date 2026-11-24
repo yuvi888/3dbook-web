@@ -7,7 +7,7 @@ import { OrbitControls, useGLTF, ContactShadows } from '@react-three/drei';
 import Link from 'next/link';
 
 // Shelf Y elevations for the 4 cove strip tiers
-const SHELF_Y_LEVELS = [0.96, 0.44, -0.03, -0.51];
+const SHELF_Y_LEVELS = [0.95, 0.46, -0.03, -0.52];
 // 5 distributed warm LED light points along the full width of each shelf
 const STRIP_X_OFFSETS = [-0.6, -0.3, 0.0, 0.3, 0.6];
 
@@ -71,7 +71,7 @@ export default function ModelViewerPage() {
               3D Model Studio Inspector
             </h1>
             <p className="text-[11px] text-amber-400 font-mono">
-              bookshelf_minimal_white.glb (62.3 KB • Full-Width Micro-LED Strips)
+              bookshelf_minimal_white.glb (187.5 KB • Designer Curved Shelves & Full-Width LED Strips)
             </p>
           </div>
         </div>
