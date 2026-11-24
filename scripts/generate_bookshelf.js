@@ -22,7 +22,7 @@ global.FileReader = class FileReader {
 };
 
 async function generateBookshelfModel() {
-  console.log('Generating Modern White Bookshelf with Center Compartment Cut in Half...');
+  console.log('Generating Bookshelf: 3 Main Tiers with Double-Height Split Center...');
 
   const scene = new THREE.Scene();
   scene.name = 'Modern_White_Bookshelf_Collection';
@@ -82,7 +82,7 @@ async function generateBookshelfModel() {
   const shelfGroup = new THREE.Group();
   shelfGroup.name = 'Bookshelf_Unit';
 
-  // Overall Dimensions
+  // Dimensions
   const totalW = 1.76;
   const totalH = 2.08;
   const depth = 0.38;
@@ -226,78 +226,68 @@ async function generateBookshelfModel() {
   }
 
   // =========================================================================
-  // 6. MODERN SHELVING: STRAIGHT CLEAN SHELVES & CENTER COMPARTMENTS CUT IN HALF
+  // 6. MODERN ARCHITECTURAL LAYOUT:
+  // 3 MAIN TIERS WITH DOUBLE-HEIGHT CENTER CUT IN HALF (2 GRAND VERTICAL NICHES)
   // =========================================================================
-  const shelfCount = 3;
   const usableHeight = ceilingBottomY - plinthTopY; // 1.932m
-  const tierHeight = (usableHeight - shelfCount * boardThick) / (shelfCount + 1); // 0.456m
+  // 2 full horizontal shelves divide the space into:
+  // Top tier (1 unit), Center tier (2 units = DOUBLE HEIGHT), Bottom tier (1 unit)
+  const unitHeight = (usableHeight - 2 * boardThick) / 4; // 0.465m
+  const topTierHeight = unitHeight; // 0.465m
+  const bottomTierHeight = unitHeight; // 0.465m
+  const centerDoubleHeight = unitHeight * 2; // 0.930m (DOUBLE HEIGHT!)
 
-  // Shelf Y elevations
-  const shelf1Y = plinthTopY + tierHeight + boardThick / 2; // -0.504m (bottom shelf)
-  const shelf2Y = shelf1Y + boardThick + tierHeight; // -0.012m (middle center shelf)
-  const shelf3Y = shelf2Y + boardThick + tierHeight; // +0.480m (top shelf)
+  // Two horizontal shelves
+  const topShelfY = ceilingBottomY - topTierHeight - boardThick / 2; // +0.471m
+  const bottomShelfY = plinthTopY + bottomTierHeight + boardThick / 2; // -0.495m
 
-  // Straight, smooth satin white lacquer shelf boards
   const fullShelfGeo = new THREE.BoxGeometry(innerW, boardThick, depth - 0.015);
 
-  // Shelf 1 (Bottom Shelf, y = -0.504m)
-  const shelf1 = new THREE.Mesh(fullShelfGeo, whiteLacquer);
-  shelf1.name = 'Shelf_Tier_1_Board';
-  shelf1.position.set(0, shelf1Y, 0.005);
-  shelfGroup.add(shelf1);
+  // Top Shelf (under top compartment)
+  const topShelf = new THREE.Mesh(fullShelfGeo, whiteLacquer);
+  topShelf.name = 'Top_Horizontal_Shelf';
+  topShelf.position.set(0, topShelfY, 0.005);
+  shelfGroup.add(topShelf);
 
-  // Shelf 2 (Middle Center Shelf, y = -0.012m)
-  const shelf2 = new THREE.Mesh(fullShelfGeo, whiteLacquer);
-  shelf2.name = 'Shelf_Tier_2_Middle_Board';
-  shelf2.position.set(0, shelf2Y, 0.005);
-  shelfGroup.add(shelf2);
-
-  // Shelf 3 (Top Shelf, y = +0.480m)
-  const shelf3 = new THREE.Mesh(fullShelfGeo, whiteLacquer);
-  shelf3.name = 'Shelf_Tier_3_Top_Board';
-  shelf3.position.set(0, shelf3Y, 0.005);
-  shelfGroup.add(shelf3);
+  // Bottom Shelf (above bottom compartment)
+  const bottomShelf = new THREE.Mesh(fullShelfGeo, whiteLacquer);
+  bottomShelf.name = 'Bottom_Horizontal_Shelf';
+  bottomShelf.position.set(0, bottomShelfY, 0.005);
+  shelfGroup.add(bottomShelf);
 
   // -------------------------------------------------------------------------
-  // MODERN STYLING: CUTTING THE CENTER COMPARTMENT IN HALF (Left & Right Niches)
+  // VERTICAL CENTER DIVIDER (Cuts the double-height center compartment in half)
+  // Creating two magnificent tall gallery display niches for decoration objects!
   // -------------------------------------------------------------------------
-  const halfNicheWidth = (innerW - boardThick) / 2; // 0.826m
+  const centerDividerHeight = centerDoubleHeight - 0.002; // 0.928m tall
+  const centerDividerCenterY = (topShelfY - boardThick / 2 + bottomShelfY + boardThick / 2) / 2; // -0.012m
+
+  const centerDividerGeo = new THREE.BoxGeometry(boardThick, centerDividerHeight, depth - 0.02);
+  const centerDivider = new THREE.Mesh(centerDividerGeo, whiteLacquer);
+  centerDivider.name = 'Center_Double_Height_Vertical_Divider';
+  centerDivider.position.set(0, centerDividerCenterY, 0.005);
+  shelfGroup.add(centerDivider);
+
+  // Dimensions of each half niche in the double-height center:
+  const halfNicheWidth = (innerW - boardThick) / 2; // 0.826m wide x 0.930m tall!
   const leftNicheCenterX = -innerW / 4 - boardThick / 4; // -0.431m
   const rightNicheCenterX = innerW / 4 + boardThick / 4; // +0.431m
 
-  // Vertical divider in Compartment 2 (Upper-center, between Shelf 3 and Shelf 2)
-  const dividerGeo = new THREE.BoxGeometry(boardThick, tierHeight - 0.002, depth - 0.02);
-  const dividerUpperCenter = new THREE.Mesh(dividerGeo, whiteLacquer);
-  dividerUpperCenter.name = 'Center_Compartment_Vertical_Divider_Upper';
-  dividerUpperCenter.position.set(0, shelf2Y + boardThick / 2 + tierHeight / 2, 0.005);
-  shelfGroup.add(dividerUpperCenter);
-
-  // Vertical divider in Compartment 3 (Lower-center, between Shelf 2 and Shelf 1)
-  const dividerLowerCenter = new THREE.Mesh(dividerGeo, whiteLacquer);
-  dividerLowerCenter.name = 'Center_Compartment_Vertical_Divider_Lower';
-  dividerLowerCenter.position.set(0, shelf1Y + boardThick / 2 + tierHeight / 2, 0.005);
-  shelfGroup.add(dividerLowerCenter);
-
   // -------------------------------------------------------------------------
-  // INTEGRATED COVE STRIP LIGHTING FOR ALL COMPARTMENTS
+  // COVE STRIP LIGHTING FOR THE 3-TIER DOUBLE-HEIGHT LAYOUT
   // -------------------------------------------------------------------------
-  // 1. Top compartment (full width, under ceiling board)
+  // 1. Top compartment (full-width, under ceiling)
   const topStripY = ceilingBottomY - 0.004;
   shelfGroup.add(createLedStripAssembly(innerW * 0.94, 0, topStripY, 'Top_Compartment'));
 
-  // 2. Upper-center compartments (Left & Right half niches under Shelf 3)
-  const tier2StripY = shelf3Y - boardThick / 2 - 0.003;
-  shelfGroup.add(createLedStripAssembly(halfNicheWidth * 0.92, leftNicheCenterX, tier2StripY, 'Tier_2_Left_Niche'));
-  shelfGroup.add(createLedStripAssembly(halfNicheWidth * 0.92, rightNicheCenterX, tier2StripY, 'Tier_2_Right_Niche'));
+  // 2. Center Double-Height Niches (Left & Right niches, under Top Shelf)
+  const centerStripY = topShelfY - boardThick / 2 - 0.003;
+  shelfGroup.add(createLedStripAssembly(halfNicheWidth * 0.92, leftNicheCenterX, centerStripY, 'Center_Left_Double_Height_Niche'));
+  shelfGroup.add(createLedStripAssembly(halfNicheWidth * 0.92, rightNicheCenterX, centerStripY, 'Center_Right_Double_Height_Niche'));
 
-  // 3. Lower-center compartments (Left & Right half niches under Shelf 2)
-  const tier3StripY = shelf2Y - boardThick / 2 - 0.003;
-  shelfGroup.add(createLedStripAssembly(halfNicheWidth * 0.92, leftNicheCenterX, tier3StripY, 'Tier_3_Left_Niche'));
-  shelfGroup.add(createLedStripAssembly(halfNicheWidth * 0.92, rightNicheCenterX, tier3StripY, 'Tier_3_Right_Niche'));
-
-  // 4. Bottom compartment (full width, under Shelf 1)
-  const tier4StripY = shelf1Y - boardThick / 2 - 0.003;
-  shelfGroup.add(createLedStripAssembly(innerW * 0.94, 0, tier4StripY, 'Bottom_Compartment'));
+  // 3. Bottom compartment (full-width, under Bottom Shelf)
+  const bottomStripY = bottomShelfY - boardThick / 2 - 0.003;
+  shelfGroup.add(createLedStripAssembly(innerW * 0.94, 0, bottomStripY, 'Bottom_Compartment'));
 
   scene.add(shelfGroup);
 
@@ -323,7 +313,7 @@ async function generateBookshelfModel() {
   const gltfSize = (fs.statSync(gltfPath).size / 1024).toFixed(1);
   console.log(`Saved ${gltfPath} (${gltfSize} KB)`);
 
-  console.log('Modern White Bookshelf Generated Successfully!');
+  console.log('Bookshelf with Double-Height Split Center Generated Successfully!');
 }
 
 generateBookshelfModel().catch(console.error);
