@@ -1,7 +1,9 @@
 'use client';
 
-import { useRef, useState, useCallback, useMemo } from 'react';
+import { useRef, useState, useCallback, useMemo, useEffect } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { ContactShadows } from '@react-three/drei';
+import { EffectComposer, N8AO, Bloom, Vignette } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import { BOOKSHELVES_DATA } from '@/data/libraryData';
 import { BookshelfItem, BookItem } from '@/types/library';
@@ -13,7 +15,7 @@ interface LibrarySceneProps {
   scrollProgress: number;
 }
 
-// Camera Rig to handle curved corridor progression and bookshelf inspection
+// Camera Rig with parallax mouse tracking
 function CameraRig({
   scrollProgress,
   inspectedShelf,
@@ -25,23 +27,37 @@ function CameraRig({
 }) {
   const { camera } = useThree();
   const currentLookAt = useRef(new THREE.Vector3(0, 0, -10));
+  const mouseRef = useRef({ x: 0, y: 0 });
+
+  // Track mouse for parallax effect
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      mouseRef.current.x = (e.clientX / window.innerWidth - 0.5) * 2;
+      mouseRef.current.y = (e.clientY / window.innerHeight - 0.5) * 2;
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, []);
 
   useFrame((_, delta) => {
     const lerpFactor = Math.min(1, delta * 4.0);
 
+    // Subtle parallax offset from mouse
+    const parallaxX = mouseRef.current.x * 0.08;
+    const parallaxY = -mouseRef.current.y * 0.05;
+
     if (inspectedShelf) {
-      // -----------------------------------------------------------
-      // INSPECTION MODE: Zoom in directly facing the selected shelf
-      // -----------------------------------------------------------
       const transform = shelfTransforms.get(inspectedShelf.id);
       if (transform) {
-        // Camera positioned to frame the wall-mounted white bookcase and brass plaque
         const targetCamPos = transform.pos
           .clone()
           .add(transform.frontVec.clone().multiplyScalar(3.5));
         targetCamPos.y = transform.pos.y + 0.15;
 
-        // Look at center of the wall-mounted bookcase
+        // Add parallax to inspection view
+        targetCamPos.x += parallaxX * 0.3;
+        targetCamPos.y += parallaxY * 0.2;
+
         const targetLookAt = transform.pos.clone();
         targetLookAt.y = transform.pos.y + 0.15;
 
@@ -50,17 +66,16 @@ function CameraRig({
         camera.lookAt(currentLookAt.current);
       }
     } else {
-      // -----------------------------------------------------------
-      // CORRIDOR SCROLL MODE: Travel smoothly along the curved tunnel
-      // -----------------------------------------------------------
       const clampedProgress = THREE.MathUtils.clamp(scrollProgress, 0.001, 0.998);
 
-      // Camera position on curve
       const pathPoint = tunnelCurve.getPointAt(clampedProgress);
       const targetCamPos = pathPoint.clone();
-      targetCamPos.y = 0.22; // Eye height
+      targetCamPos.y = 0.22;
 
-      // Look ahead along the curve's turn
+      // Apply parallax to corridor scroll
+      targetCamPos.x += parallaxX * 0.12;
+      targetCamPos.y += parallaxY * 0.08;
+
       const lookAheadProgress = Math.min(0.999, clampedProgress + 0.045);
       const lookAheadPoint = tunnelCurve.getPointAt(lookAheadProgress);
       const targetLookAt = lookAheadPoint.clone();
@@ -92,18 +107,12 @@ export default function LibraryScene({ scrollProgress }: LibrarySceneProps) {
       const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
 
       const isLeft = shelf.side === 'left';
-      // Offset from center corridor wall (attached cleanly to wooden wall)
       const offsetDist = isLeft ? -3.12 : 3.12;
       const shelfPos = pt.clone().add(normal.clone().multiplyScalar(offsetDist));
-      shelfPos.y = 0.08; // Wall-mounted floating level
+      shelfPos.y = 0.08;
 
-      // Direction vector pointing from the bookshelf directly into the center corridor aisle
       const inwardDir = pt.clone().sub(shelfPos).setY(0).normalize();
-
-      // Orientation: local +Z (the open front of the bookshelf with books and plaque) faces inward toward the corridor
       const rotY = Math.atan2(inwardDir.x, inwardDir.z);
-
-      // Front vector facing out from the shelf toward the aisle
       const frontVec = inwardDir.clone();
 
       map.set(shelf.id, {
@@ -140,34 +149,59 @@ export default function LibraryScene({ scrollProgress }: LibrarySceneProps) {
   }, []);
 
   return (
-    <div className="w-full h-full relative bg-[#120b06]">
+    <div className="w-full h-full relative bg-[#f5f0e8]">
       <Canvas
         camera={{ fov: 55, near: 0.1, far: 180, position: [0, 0.22, 8] }}
         gl={{
           antialias: true,
           toneMapping: THREE.ACESFilmicToneMapping,
-          toneMappingExposure: 1.2,
+          toneMappingExposure: 1.4,
         }}
-        style={{ width: '100%', height: '100%', display: 'block', background: '#120b06' }}
+        style={{ width: '100%', height: '100%', display: 'block', background: '#f5f0e8' }}
       >
-        {/* Warm atmospheric library depth fog */}
-        <fog attach="fog" args={['#160e08', 7, 58]} />
+        {/* Soft warm atmospheric fog — light beige */}
+        <fog attach="fog" args={['#ebe4d8', 10, 65]} />
 
-        {/* Global Multi-directional Gallery Lighting */}
-        <ambientLight intensity={0.9} color="#fff8ee" />
-        <hemisphereLight args={['#fff5e6', '#3b2210', 0.7]} />
-        <directionalLight position={[14, 22, 10]} intensity={1.3} color="#fff3e0" castShadow />
-        <directionalLight position={[-14, 16, -10]} intensity={0.8} color="#fdecd9" />
+        {/* ============================================================ */}
+        {/* BRIGHT SUNLIT GALLERY LIGHTING                               */}
+        {/* ============================================================ */}
+        <ambientLight intensity={1.4} color="#fff8ee" />
+        <hemisphereLight args={['#e3f2fd', '#d7ccc8', 0.8]} />
 
-        {/* Camera controller */}
+        {/* Strong warm sunlight from above-right */}
+        <directionalLight
+          position={[20, 30, 15]}
+          intensity={2.0}
+          color="#fff3e0"
+          castShadow
+          shadow-mapSize-width={1024}
+          shadow-mapSize-height={1024}
+        />
+        {/* Fill light from opposite side */}
+        <directionalLight position={[-15, 20, -10]} intensity={0.9} color="#fdecd9" />
+
+        {/* Soft sky light from above */}
+        <directionalLight position={[0, 25, 0]} intensity={0.6} color="#e3f2fd" />
+
+        {/* Camera controller with parallax */}
         <CameraRig
           scrollProgress={scrollProgress}
           inspectedShelf={inspectedShelf}
           shelfTransforms={transformMap}
         />
 
-        {/* Curved White Architectural Corridor */}
+        {/* Curved Bright Beige Corridor */}
         <CurvedCorridor />
+
+        {/* Contact Shadows under bookshelves */}
+        <ContactShadows
+          position={[0, -2.3, -55]}
+          opacity={0.35}
+          scale={120}
+          blur={2.5}
+          far={4}
+          color="#8d7b5e"
+        />
 
         {/* 3D Bookshelves placed along the corridor curve */}
         {shelvesWithTransforms.map(({ shelf, position, rotation }) => (
@@ -181,6 +215,27 @@ export default function LibraryScene({ scrollProgress }: LibrarySceneProps) {
             onSelectBook={handleSelectBook}
           />
         ))}
+
+        {/* ============================================================ */}
+        {/* POST-PROCESSING EFFECTS                                      */}
+        {/* ============================================================ */}
+        <EffectComposer>
+          {/* Ambient Occlusion — subtle contact shadows */}
+          <N8AO
+            aoRadius={0.8}
+            intensity={1.2}
+            distanceFalloff={0.8}
+          />
+          {/* Bloom — subtle glow on LED strips and windows */}
+          <Bloom
+            luminanceThreshold={0.85}
+            luminanceSmoothing={0.3}
+            intensity={0.25}
+            mipmapBlur
+          />
+          {/* Vignette — cinematic edge darkening */}
+          <Vignette darkness={0.25} offset={0.3} />
+        </EffectComposer>
       </Canvas>
 
       {/* Floating UI HUD for Shelf Inspection & Book Modal */}

@@ -471,22 +471,22 @@ export function Book3D({
           distanceFactor={4.8}
           style={{ pointerEvents: 'none' }}
         >
-          <div className="bg-neutral-950/95 backdrop-blur-xl text-white border border-amber-500/50 rounded-2xl px-4 py-3 shadow-[0_20px_50px_rgba(0,0,0,0.85)] flex flex-col whitespace-nowrap pointer-events-none transform -translate-y-2 transition-all">
+          <div className="bg-white/95 backdrop-blur-xl text-neutral-800 border border-amber-200/60 rounded-2xl px-4 py-3 shadow-[0_20px_50px_rgba(0,0,0,0.15)] flex flex-col whitespace-nowrap pointer-events-none transform -translate-y-2 transition-all">
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-              <span className="text-xs font-black uppercase tracking-wider text-amber-200">
+              <span className="w-2 h-2 rounded-full bg-amber-600 animate-pulse" />
+              <span className="text-xs font-black uppercase tracking-wider text-amber-900">
                 {book.title}
               </span>
             </div>
-            <div className="flex items-center gap-2 mt-1 text-[11px] text-neutral-300">
-              <span className="text-amber-400 font-semibold">{book.year}</span>
-              <span className="text-neutral-500">•</span>
+            <div className="flex items-center gap-2 mt-1 text-[11px] text-neutral-600">
+              <span className="text-amber-700 font-semibold">{book.year}</span>
+              <span className="text-neutral-400">•</span>
               <span>{book.pages} pages</span>
-              <span className="text-neutral-500">•</span>
-              <span className="text-emerald-400 font-medium">Hardcover Edition</span>
+              <span className="text-neutral-400">•</span>
+              <span className="text-emerald-700 font-medium">Hardcover Edition</span>
             </div>
             {isShelfInspected && (
-              <span className="mt-1.5 text-[10px] text-amber-300 font-medium tracking-wide">
+              <span className="mt-1.5 text-[10px] text-amber-700 font-medium tracking-wide">
                 ✦ Click to view literary synopsis
               </span>
             )}
