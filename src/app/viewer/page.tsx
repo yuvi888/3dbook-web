@@ -51,45 +51,70 @@ function BookshelfModel({ autoRotate }: { autoRotate: boolean }) {
 }
 
 // ---------------------------------------------------------------------------
-// PHOTOREALISTIC BOTANICAL PLANT POT WITH TRANSPARENT LEAF CARDS
+// PHOTOREALISTIC BOTANICAL PLANT POT WITH TRANSPARENT BULK LEAVES
 // ---------------------------------------------------------------------------
 function CurvedLeafCard({
   width,
   length,
   texture,
   position,
-  rotation,
+  direction,
+  roll = 0,
 }: {
   width: number;
   length: number;
   texture: THREE.Texture;
   position: [number, number, number];
-  rotation: [number, number, number];
+  direction: [number, number, number];
+  roll?: number;
 }) {
-  const geo = useMemo(() => {
-    const g = new THREE.PlaneGeometry(width, length, 6, 8);
+  const { geo, quaternion } = useMemo(() => {
+    // 1. Create PlaneGeometry with origin at base (petiole attachment point)
+    const g = new THREE.PlaneGeometry(width, length, 8, 12);
     const pos = g.attributes.position;
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
       const y = pos.getY(i);
-      const normY = (y + length / 2) / length;
+      // Shift so base is at y = 0, apex is at y = length
+      const localY = y + length / 2;
+      const normY = Math.max(0, Math.min(1, localY / length));
       const distFromCenter = Math.abs(x) / (width / 2);
-      // Natural 3D cupping across leaf wings
-      const cupZ = Math.pow(distFromCenter, 1.4) * (width * 0.16);
-      // Natural arching droop along leaf length
-      const droopZ = -Math.sin(normY * Math.PI * 0.8) * (length * 0.22);
-      pos.setZ(i, cupZ + droopZ);
+
+      // Natural 3D cupping across leaf wings (flatter at base and tip, cupped in middle)
+      const cup = Math.sin(normY * Math.PI) * Math.pow(distFromCenter, 1.4) * (width * 0.18);
+      // Natural arching droop along leaf length (gravity pulls tip downward in local -Z)
+      const droop = -Math.pow(normY, 1.5) * (length * 0.26);
+
+      pos.setY(i, localY);
+      pos.setZ(i, cup + droop);
     }
     g.computeVertexNormals();
-    return g;
-  }, [width, length]);
+
+    // 2. Compute rotation quaternion to orient local +Y along direction, plus twist
+    const dirVec = new THREE.Vector3(...direction).normalize();
+    const upVec = new THREE.Vector3(0, 1, 0);
+    const q = new THREE.Quaternion().setFromUnitVectors(upVec, dirVec);
+
+    if (roll !== 0) {
+      const qRoll = new THREE.Quaternion().setFromAxisAngle(dirVec, roll);
+      q.premultiply(qRoll);
+    }
+
+    return { geo: g, quaternion: q };
+  }, [width, length, direction, roll]);
 
   return (
-    <mesh geometry={geo} position={position} rotation={rotation} castShadow receiveShadow>
+    <mesh
+      geometry={geo}
+      position={position}
+      quaternion={quaternion}
+      castShadow
+      receiveShadow
+    >
       <meshStandardMaterial
         map={texture}
         transparent={true}
-        alphaTest={0.06}
+        alphaTest={0.08}
         depthWrite={true}
         side={THREE.DoubleSide}
         roughness={0.28}
@@ -99,29 +124,62 @@ function CurvedLeafCard({
   );
 }
 
-function StemTube({
+function PetioleStem({
   start,
   end,
-  midArch = 0.014,
+  arch = 0.008,
 }: {
   start: [number, number, number];
   end: [number, number, number];
-  midArch?: number;
+  arch?: number;
 }) {
   const geo = useMemo(() => {
     const p0 = new THREE.Vector3(...start);
     const p2 = new THREE.Vector3(...end);
+    // Smooth upward arching midpoint
     const p1 = new THREE.Vector3(
       (p0.x + p2.x) / 2,
-      (p0.y + p2.y) / 2 + midArch,
+      Math.max(p0.y, p2.y) + arch,
       (p0.z + p2.z) / 2
     );
     const curve = new THREE.CatmullRomCurve3([p0, p1, p2]);
-    return new THREE.TubeGeometry(curve, 8, 0.0013, 6, false);
-  }, [start, end, midArch]);
+    return new THREE.TubeGeometry(curve, 8, 0.0014, 6, false);
+  }, [start, end, arch]);
 
   return (
     <mesh geometry={geo} castShadow>
+      <meshStandardMaterial color="#4a7936" roughness={0.42} />
+    </mesh>
+  );
+}
+
+function TrailingVineRunner({ points }: { points: THREE.Vector3[] }) {
+  const geo = useMemo(() => {
+    const curve = new THREE.CatmullRomCurve3(points);
+    return new THREE.TubeGeometry(curve, 32, 0.0018, 8, false);
+  }, [points]);
+
+  return (
+    <mesh geometry={geo} castShadow>
+      <meshStandardMaterial color="#3f6d2e" roughness={0.45} />
+    </mesh>
+  );
+}
+
+function ShortPetiole({
+  start,
+  end,
+}: {
+  start: THREE.Vector3;
+  end: THREE.Vector3;
+}) {
+  const geo = useMemo(() => {
+    const curve = new THREE.LineCurve3(start, end);
+    return new THREE.TubeGeometry(curve, 4, 0.0012, 6, false);
+  }, [start, end]);
+
+  return (
+    <mesh geometry={geo}>
       <meshStandardMaterial color="#4a7936" roughness={0.42} />
     </mesh>
   );
@@ -136,7 +194,7 @@ function TrailingPothosPlantPot({ autoRotate }: { autoRotate: boolean }) {
     }
   });
 
-  // Load transparent PNG leaf textures
+  // Load botanical leaf textures & organic soil texture
   const textures = useMemo(() => {
     const loader = new THREE.TextureLoader();
     const load = (path: string) => {
@@ -144,57 +202,180 @@ function TrailingPothosPlantPot({ autoRotate }: { autoRotate: boolean }) {
       tex.colorSpace = THREE.SRGBColorSpace;
       return tex;
     };
+    const soilTex = load('/textures/soil_texture.png');
+    soilTex.wrapS = THREE.RepeatWrapping;
+    soilTex.wrapT = THREE.RepeatWrapping;
+    soilTex.repeat.set(2, 2);
+
     return {
       heart: load('/textures/leaf_heart.png'),
       curved: load('/textures/leaf_curved.png'),
       young: load('/textures/leaf_young.png'),
       droop: load('/textures/leaf_droop.png'),
+      soil: soilTex,
     };
   }, []);
 
-  const potRadius = 0.068;
-  const potHeight = 0.125;
-  const soilY = potHeight - 0.014;
+  const potRadius = 0.068; // 13.6 cm diameter
+  const potHeight = 0.125; // 12.5 cm height
+  const soilY = potHeight - 0.014; // recessed 1.4 cm below rim
 
-  // Realistic leaf card placements
-  const crownLeaves = [
-    // Center young sprouting leaves
-    { pos: [0.015, soilY + 0.075, 0.012], rot: [0.5, 0.2, 0.1], w: 0.046, len: 0.068, tex: textures.young },
-    { pos: [-0.012, soilY + 0.082, -0.014], rot: [0.45, 2.2, -0.1], w: 0.048, len: 0.070, tex: textures.young },
-    { pos: [0.02, soilY + 0.086, -0.015], rot: [0.4, 4.1, 0.15], w: 0.045, len: 0.066, tex: textures.young },
+  // 1. GENERATE DENSE, BUSHY CROWN FOLIAGE (38 bulk leaves forming a lush domed canopy)
+  const crownFoliage = useMemo(() => {
+    const leaves: any[] = [];
 
-    // Mid-tier canopy leaves (spreading)
-    { pos: [-0.045, soilY + 0.062, 0.035], rot: [0.75, 0.8, -0.2], w: 0.068, len: 0.085, tex: textures.heart },
-    { pos: [0.052, soilY + 0.058, 0.028], rot: [0.82, -0.5, 0.25], w: 0.072, len: 0.090, tex: textures.curved },
-    { pos: [0.038, soilY + 0.065, -0.048], rot: [0.78, -2.4, -0.18], w: 0.066, len: 0.084, tex: textures.heart },
-    { pos: [-0.055, soilY + 0.060, -0.032], rot: [0.80, 2.7, 0.22], w: 0.070, len: 0.088, tex: textures.curved },
-    { pos: [-0.018, soilY + 0.068, 0.058], rot: [0.85, 0.3, 0.15], w: 0.069, len: 0.086, tex: textures.heart },
-    { pos: [0.015, soilY + 0.064, -0.058], rot: [0.76, 3.2, -0.2], w: 0.067, len: 0.083, tex: textures.curved },
+    // --- Tier 1: Center Sprouting Core (6 tender leaves) ---
+    for (let i = 0; i < 6; i++) {
+      const angle = (i * Math.PI * 2) / 6 + 0.2;
+      const rRoot = 0.010 + (i % 2) * 0.005;
+      const rBase = 0.018 + (i % 3) * 0.005;
+      const yBase = soilY + 0.032 + (i % 3) * 0.006;
+      leaves.push({
+        id: `core-${i}`,
+        root: [rRoot * Math.cos(angle), soilY + 0.002, rRoot * Math.sin(angle)] as [number, number, number],
+        base: [rBase * Math.cos(angle + 0.15), yBase, rBase * Math.sin(angle + 0.15)] as [number, number, number],
+        dir: [0.35 * Math.cos(angle + 0.15), 0.92, 0.35 * Math.sin(angle + 0.15)] as [number, number, number],
+        w: 0.058,
+        len: 0.078,
+        roll: ((i % 3) - 1) * 0.12,
+        tex: i % 2 === 0 ? textures.young : textures.heart,
+        arch: 0.004,
+      });
+    }
 
-    // Outer spreading leaves
-    { pos: [-0.068, soilY + 0.045, 0.048], rot: [1.05, 0.9, -0.3], w: 0.078, len: 0.096, tex: textures.heart },
-    { pos: [0.072, soilY + 0.042, 0.042], rot: [1.12, -0.7, 0.32], w: 0.080, len: 0.098, tex: textures.curved },
-    { pos: [0.058, soilY + 0.046, -0.062], rot: [1.02, -2.2, -0.25], w: 0.075, len: 0.094, tex: textures.heart },
-    { pos: [-0.074, soilY + 0.040, -0.045], rot: [1.10, 2.5, 0.28], w: 0.079, len: 0.097, tex: textures.curved },
-  ];
+    // --- Tier 2: Inner Canopy (10 leaves, spreading at 45°) ---
+    for (let i = 0; i < 10; i++) {
+      const angle = (i * Math.PI * 2) / 10 + 0.4;
+      const rRoot = 0.018 + (i % 2) * 0.006;
+      const rBase = 0.036 + (i % 3) * 0.006;
+      const yBase = soilY + 0.026 + (i % 2) * 0.006;
+      leaves.push({
+        id: `inner-${i}`,
+        root: [rRoot * Math.cos(angle), soilY + 0.002, rRoot * Math.sin(angle)] as [number, number, number],
+        base: [rBase * Math.cos(angle + 0.1), yBase, rBase * Math.sin(angle + 0.1)] as [number, number, number],
+        dir: [0.65 * Math.cos(angle + 0.1), 0.72, 0.65 * Math.sin(angle + 0.1)] as [number, number, number],
+        w: 0.072,
+        len: 0.094,
+        roll: ((i % 4) - 1.5) * 0.14,
+        tex: i % 2 === 0 ? textures.heart : textures.curved,
+        arch: 0.005,
+      });
+    }
 
-  // Cascading trailing leaves spilling down the pot sides
-  const trailingLeaves = [
-    // Front-Left trailing vine
-    { pos: [-0.065, soilY - 0.005, 0.058], rot: [1.45, 0.6, -0.35], w: 0.068, len: 0.084, tex: textures.droop },
-    { pos: [-0.078, soilY - 0.038, 0.062], rot: [1.60, 0.5, -0.28], w: 0.064, len: 0.078, tex: textures.droop },
-    { pos: [-0.082, soilY - 0.072, 0.058], rot: [1.65, 0.45, -0.22], w: 0.058, len: 0.072, tex: textures.droop },
-    { pos: [-0.076, soilY - 0.105, 0.052], rot: [1.70, 0.40, -0.18], w: 0.052, len: 0.065, tex: textures.young },
+    // --- Tier 3: Mid-Rim Canopy (12 leaves, flaring outward to conceal pot opening) ---
+    for (let i = 0; i < 12; i++) {
+      const angle = (i * Math.PI * 2) / 12 + 0.15;
+      const rRoot = 0.025 + (i % 3) * 0.006;
+      const rBase = 0.054 + (i % 3) * 0.005;
+      const yBase = soilY + 0.020 + (i % 2) * 0.005;
+      leaves.push({
+        id: `mid-${i}`,
+        root: [rRoot * Math.cos(angle), soilY + 0.002, rRoot * Math.sin(angle)] as [number, number, number],
+        base: [rBase * Math.cos(angle + 0.08), yBase, rBase * Math.sin(angle + 0.08)] as [number, number, number],
+        dir: [0.82 * Math.cos(angle + 0.08), 0.48, 0.82 * Math.sin(angle + 0.08)] as [number, number, number],
+        w: 0.078,
+        len: 0.102,
+        roll: ((i % 5) - 2) * 0.15,
+        tex: i % 3 === 0 ? textures.curved : textures.heart,
+        arch: 0.006,
+      });
+    }
 
-    // Right trailing vine
-    { pos: [0.068, soilY - 0.008, 0.042], rot: [1.42, -0.6, 0.35], w: 0.066, len: 0.082, tex: textures.droop },
-    { pos: [0.078, soilY - 0.042, 0.036], rot: [1.58, -0.5, 0.28], w: 0.062, len: 0.076, tex: textures.droop },
-    { pos: [0.080, soilY - 0.078, 0.028], rot: [1.64, -0.42, 0.20], w: 0.056, len: 0.070, tex: textures.droop },
+    // --- Tier 4: Outer Lip-Softening Canopy (10 broad leaves draping gracefully over rim) ---
+    for (let i = 0; i < 10; i++) {
+      const angle = (i * Math.PI * 2) / 10 + 0.3;
+      const rRoot = 0.030 + (i % 2) * 0.006;
+      const rBase = 0.072 + (i % 3) * 0.004;
+      const yBase = soilY + 0.016 + (i % 2) * 0.004; // Cresting right above rim
+      leaves.push({
+        id: `outer-${i}`,
+        root: [rRoot * Math.cos(angle), soilY + 0.002, rRoot * Math.sin(angle)] as [number, number, number],
+        base: [rBase * Math.cos(angle + 0.05), yBase, rBase * Math.sin(angle + 0.05)] as [number, number, number],
+        dir: [0.90 * Math.cos(angle + 0.05), -0.10, 0.90 * Math.sin(angle + 0.05)] as [number, number, number],
+        w: 0.084,
+        len: 0.108,
+        roll: ((i % 3) - 1) * 0.18,
+        tex: i % 2 === 0 ? textures.droop : textures.heart,
+        arch: 0.008,
+      });
+    }
 
-    // Front soft trailing vine
-    { pos: [0.012, soilY - 0.012, 0.072], rot: [1.50, 0.1, 0.12], w: 0.065, len: 0.080, tex: textures.droop },
-    { pos: [0.018, soilY - 0.048, 0.078], rot: [1.62, 0.05, 0.10], w: 0.058, len: 0.072, tex: textures.droop },
-  ];
+    return leaves;
+  }, [textures, soilY]);
+
+  // 2. GENERATE REALISTIC CASCADING TRAILING VINES (Matching reference photo top shelf plant)
+  const trailingVines = useMemo(() => {
+    const vineConfigs = [
+      // Primary dramatic front-left cascade
+      { id: 'vine-fl', phi: 2.15, len: 1.0, count: 7 },
+      // Secondary right side cascade
+      { id: 'vine-r', phi: -0.70, len: 0.85, count: 5 },
+      // Subtle front-center arch
+      { id: 'vine-fc', phi: 1.15, len: 0.65, count: 4 },
+    ];
+
+    return vineConfigs.map((cfg) => {
+      // 7-point CatmullRom spline strictly verified for pot rim & wall clearance
+      const points = [
+        new THREE.Vector3(0.024 * Math.cos(cfg.phi - 0.2), soilY + 0.002, 0.024 * Math.sin(cfg.phi - 0.2)),
+        new THREE.Vector3(0.048 * Math.cos(cfg.phi - 0.08), 0.122, 0.048 * Math.sin(cfg.phi - 0.08)),
+        new THREE.Vector3(0.074 * Math.cos(cfg.phi), 0.134, 0.074 * Math.sin(cfg.phi)), // Crest cleanly over rim
+        new THREE.Vector3(0.080 * Math.cos(cfg.phi + 0.03), 0.098 * cfg.len + (1 - cfg.len) * 0.115, 0.080 * Math.sin(cfg.phi + 0.03)),
+        new THREE.Vector3(0.084 * Math.cos(cfg.phi + 0.06), 0.062 * cfg.len + (1 - cfg.len) * 0.110, 0.084 * Math.sin(cfg.phi + 0.06)),
+        new THREE.Vector3(0.086 * Math.cos(cfg.phi + 0.08), 0.026 * cfg.len + (1 - cfg.len) * 0.105, 0.086 * Math.sin(cfg.phi + 0.08)),
+        new THREE.Vector3(0.084 * Math.cos(cfg.phi + 0.10), -0.008 * cfg.len + (1 - cfg.len) * 0.100, 0.084 * Math.sin(cfg.phi + 0.10)),
+      ];
+
+      const curve = new THREE.CatmullRomCurve3(points);
+
+      const leaves = [];
+      for (let i = 0; i < cfg.count; i++) {
+        const t = 0.28 + (i / (cfg.count - 1)) * 0.68;
+        const pOnVine = curve.getPointAt(t);
+        const tangent = curve.getTangentAt(t);
+
+        const normal = new THREE.Vector3(pOnVine.x, 0, pOnVine.z).normalize();
+        const isLeft = i % 2 === 0;
+
+        // Tangential side offset: leaves branch naturally along the vine flow (no 90-deg pegs)
+        const sideDir = new THREE.Vector3().crossVectors(tangent, normal).normalize();
+        const leafPos = pOnVine
+          .clone()
+          .add(normal.clone().multiplyScalar(0.006))
+          .add(sideDir.clone().multiplyScalar(isLeft ? 0.005 : -0.005));
+
+        const leafLen = 0.082 - (i / cfg.count) * 0.026;
+        const leafW = 0.062 - (i / cfg.count) * 0.020;
+
+        // Leaf blade direction: drapes naturally down along the vine and outwards
+        const leafDir = normal
+          .clone()
+          .multiplyScalar(0.50)
+          .add(new THREE.Vector3(0, -0.85, 0))
+          .add(sideDir.clone().multiplyScalar(isLeft ? 0.20 : -0.20))
+          .normalize();
+
+        const tex =
+          i === cfg.count - 1
+            ? textures.young
+            : i % 2 === 0
+            ? textures.droop
+            : textures.curved;
+
+        leaves.push({
+          id: `${cfg.id}-leaf-${i}`,
+          pos: leafPos,
+          dir: [leafDir.x, leafDir.y, leafDir.z] as [number, number, number],
+          w: leafW,
+          len: leafLen,
+          roll: isLeft ? 0.18 : -0.18,
+          tex,
+        });
+      }
+
+      return { id: cfg.id, points, leaves };
+    });
+  }, [textures, soilY]);
 
   return (
     <group ref={groupRef} position={[0, -0.02, 0]}>
@@ -203,31 +384,36 @@ function TrailingPothosPlantPot({ autoRotate }: { autoRotate: boolean }) {
         {/* Outer Cylinder Wall */}
         <mesh position={[0, potHeight / 2, 0]} castShadow receiveShadow>
           <cylinderGeometry args={[potRadius, potRadius * 0.94, potHeight, 48, 1, true]} />
-          <meshStandardMaterial color="#f8f6f1" roughness={0.34} metalness={0.01} side={THREE.DoubleSide} />
+          <meshStandardMaterial color="#faf8f4" roughness={0.32} metalness={0.01} side={THREE.DoubleSide} />
         </mesh>
 
         {/* Inner Cylinder Wall */}
         <mesh position={[0, potHeight / 2, 0]}>
           <cylinderGeometry args={[potRadius - 0.005, potRadius * 0.94 - 0.005, potHeight, 48, 1, true]} />
-          <meshStandardMaterial color="#f8f6f1" roughness={0.34} metalness={0.01} side={THREE.DoubleSide} />
+          <meshStandardMaterial color="#f4f1ec" roughness={0.34} metalness={0.01} side={THREE.DoubleSide} />
         </mesh>
 
         {/* Smooth Rounded Ceramic Rim Lip */}
         <mesh position={[0, potHeight, 0]} rotation={[Math.PI / 2, 0, 0]}>
           <torusGeometry args={[potRadius - 0.0025, 0.0035, 16, 48]} />
-          <meshStandardMaterial color="#f8f6f1" roughness={0.34} metalness={0.01} />
+          <meshStandardMaterial color="#faf8f4" roughness={0.32} metalness={0.01} />
         </mesh>
 
         {/* Bottom Base Plate */}
         <mesh position={[0, 0.002, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <circleGeometry args={[potRadius * 0.94, 48]} />
-          <meshStandardMaterial color="#f8f6f1" roughness={0.34} metalness={0.01} />
+          <meshStandardMaterial color="#faf8f4" roughness={0.32} metalness={0.01} />
         </mesh>
 
-        {/* Recessed Dark Organic Potting Soil */}
+        {/* Recessed Dark Organic Potting Soil with Soil Texture */}
         <mesh position={[0, soilY, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
           <circleGeometry args={[potRadius - 0.006, 36]} />
-          <meshStandardMaterial color="#1a120b" roughness={0.96} metalness={0.0} />
+          <meshStandardMaterial
+            map={textures.soil}
+            color="#221812"
+            roughness={0.96}
+            metalness={0.0}
+          />
         </mesh>
 
         {/* Decorative River Pebbles on Soil */}
@@ -236,50 +422,47 @@ function TrailingPothosPlantPot({ autoRotate }: { autoRotate: boolean }) {
           [0.022, soilY + 0.003, -0.024, 0.006],
           [-0.01, soilY + 0.004, -0.030, 0.008],
           [0.032, soilY + 0.003, 0.016, 0.006],
+          [-0.025, soilY + 0.003, -0.015, 0.005],
+          [0.012, soilY + 0.003, 0.032, 0.006],
         ].map(([x, y, z, s], i) => (
           <mesh key={i} position={[x, y, z]} scale={[1, 0.55, 0.85]}>
             <sphereGeometry args={[s, 10, 8]} />
-            <meshStandardMaterial color="#6a635b" roughness={0.52} />
+            <meshStandardMaterial color="#5e5750" roughness={0.52} />
           </mesh>
         ))}
       </group>
 
-      {/* 2. PETIOLE STEMS */}
-      {crownLeaves.map((leaf, idx) => (
-        <StemTube
-          key={`stem-crown-${idx}`}
-          start={[leaf.pos[0] * 0.22, soilY + 0.002, leaf.pos[2] * 0.22]}
-          end={leaf.pos as [number, number, number]}
-          midArch={0.012}
-        />
+      {/* 2. CROWN FOLIAGE (38 bulk leaves forming a dense, bushy dome) */}
+      {crownFoliage.map((leaf) => (
+        <group key={leaf.id}>
+          <PetioleStem start={leaf.root} end={leaf.base} arch={leaf.arch} />
+          <CurvedLeafCard
+            width={leaf.w}
+            length={leaf.len}
+            texture={leaf.tex}
+            position={leaf.base}
+            direction={leaf.dir}
+            roll={leaf.roll}
+          />
+        </group>
       ))}
 
-      {/* Trailing Vine Main Stems */}
-      <StemTube start={[-0.02, soilY + 0.004, 0.02]} end={[-0.075, soilY - 0.10, 0.052]} midArch={0.025} />
-      <StemTube start={[0.02, soilY + 0.004, 0.015]} end={[0.08, soilY - 0.075, 0.028]} midArch={0.022} />
-      <StemTube start={[0.01, soilY + 0.004, 0.025]} end={[0.018, soilY - 0.045, 0.078]} midArch={0.018} />
-
-      {/* 3. PHOTOGRAPHIC TRANSPARENT LEAVES */}
-      {crownLeaves.map((leaf, idx) => (
-        <CurvedLeafCard
-          key={`leaf-crown-${idx}`}
-          width={leaf.w}
-          length={leaf.len}
-          texture={leaf.tex}
-          position={leaf.pos as [number, number, number]}
-          rotation={leaf.rot as [number, number, number]}
-        />
-      ))}
-
-      {trailingLeaves.map((leaf, idx) => (
-        <CurvedLeafCard
-          key={`leaf-trailing-${idx}`}
-          width={leaf.w}
-          length={leaf.len}
-          texture={leaf.tex}
-          position={leaf.pos as [number, number, number]}
-          rotation={leaf.rot as [number, number, number]}
-        />
+      {/* 3. CASCADING TRAILING VINES (Graceful runners with natural cascading leaves) */}
+      {trailingVines.map((vine) => (
+        <group key={vine.id}>
+          <TrailingVineRunner points={vine.points} />
+          {vine.leaves.map((l) => (
+            <CurvedLeafCard
+              key={l.id}
+              width={l.w}
+              length={l.len}
+              texture={l.tex}
+              position={[l.pos.x, l.pos.y, l.pos.z]}
+              direction={l.dir}
+              roll={l.roll}
+            />
+          ))}
+        </group>
       ))}
     </group>
   );

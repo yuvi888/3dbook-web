@@ -190,111 +190,191 @@ async function generatePhotorealisticPlantPot() {
   }
 
   // =========================================================================
-  // 5. NATURAL CROWN FOLIAGE (30 Leaves clustered naturally in pot)
+  // 5. NATURAL CROWN FOLIAGE (38 Bulk Leaves forming a dense, bushy dome)
   // =========================================================================
   const foliageGroup = new THREE.Group();
   foliageGroup.name = 'Foliage_Assembly';
 
-  // Seeded leaf configurations for natural organic phyllotaxis
-  const crownLeaves = [
-    // --- Center Upright Sprouting Leaves ---
-    { r: 0.018, angle: 0.2, y: 0.075, len: 0.048, w: 0.034, pitch: 0.45, roll: 0.10, mat: youngLeafMat },
-    { r: 0.022, angle: 1.8, y: 0.082, len: 0.052, w: 0.036, pitch: 0.50, roll: -0.15, mat: youngLeafMat },
-    { r: 0.016, angle: 3.5, y: 0.088, len: 0.046, w: 0.032, pitch: 0.40, roll: 0.20, mat: youngLeafMat },
-    { r: 0.024, angle: 5.1, y: 0.078, len: 0.050, w: 0.035, pitch: 0.48, roll: -0.12, mat: youngLeafMat },
+  // --- Tier 1: Center Sprouting Core (6 leaves) ---
+  for (let i = 0; i < 6; i++) {
+    const angle = (i * Math.PI * 2) / 6 + 0.2;
+    const rRoot = 0.010 + (i % 2) * 0.005;
+    const rBase = 0.018 + (i % 3) * 0.005;
+    const yBase = soilY + 0.032 + (i % 3) * 0.006;
 
-    // --- Mid-Tier Canopy Leaves ---
-    { r: 0.042, angle: 0.5, y: 0.068, len: 0.064, w: 0.044, pitch: 0.75, roll: 0.20, mat: midLeafMat },
-    { r: 0.046, angle: 1.2, y: 0.062, len: 0.068, w: 0.046, pitch: 0.82, roll: -0.18, mat: midLeafMat },
-    { r: 0.040, angle: 2.1, y: 0.070, len: 0.062, w: 0.042, pitch: 0.72, roll: 0.25, mat: midLeafMat },
-    { r: 0.048, angle: 2.8, y: 0.058, len: 0.070, w: 0.048, pitch: 0.88, roll: -0.22, mat: midLeafMat },
-    { r: 0.044, angle: 3.7, y: 0.065, len: 0.065, w: 0.045, pitch: 0.78, roll: 0.15, mat: midLeafMat },
-    { r: 0.047, angle: 4.5, y: 0.060, len: 0.067, w: 0.046, pitch: 0.85, roll: -0.28, mat: midLeafMat },
-    { r: 0.041, angle: 5.4, y: 0.066, len: 0.063, w: 0.043, pitch: 0.76, roll: 0.18, mat: midLeafMat },
-    { r: 0.045, angle: 6.0, y: 0.063, len: 0.066, w: 0.045, pitch: 0.80, roll: -0.15, mat: midLeafMat },
-
-    // --- Outer Spreading Mature Leaves ---
-    { r: 0.062, angle: 0.8, y: 0.048, len: 0.076, w: 0.052, pitch: 1.05, roll: 0.28, mat: matureLeafMat },
-    { r: 0.066, angle: 1.6, y: 0.042, len: 0.082, w: 0.056, pitch: 1.15, roll: -0.25, mat: matureLeafMat },
-    { r: 0.058, angle: 2.5, y: 0.050, len: 0.074, w: 0.050, pitch: 1.02, roll: 0.32, mat: matureLeafMat },
-    { r: 0.068, angle: 3.3, y: 0.038, len: 0.084, w: 0.058, pitch: 1.20, roll: -0.30, mat: matureLeafMat },
-    { r: 0.060, angle: 4.1, y: 0.046, len: 0.078, w: 0.054, pitch: 1.08, roll: 0.22, mat: matureLeafMat },
-    { r: 0.065, angle: 4.9, y: 0.040, len: 0.080, w: 0.055, pitch: 1.18, roll: -0.35, mat: matureLeafMat },
-    { r: 0.059, angle: 5.7, y: 0.047, len: 0.075, w: 0.051, pitch: 1.04, roll: 0.25, mat: matureLeafMat },
-  ];
-
-  crownLeaves.forEach((cfg, idx) => {
     const leafUnit = new THREE.Group();
-    leafUnit.name = `Crown_Leaf_${idx + 1}`;
+    leafUnit.name = `Core_Leaf_${i + 1}`;
 
-    const endX = Math.cos(cfg.angle) * cfg.r;
-    const endZ = Math.sin(cfg.angle) * cfg.r;
-    const endY = soilY + cfg.y;
-
-    // Slender organic petiole stem
-    const stemStart = new THREE.Vector3(endX * 0.2, soilY + 0.002, endZ * 0.2);
-    const stemEnd = new THREE.Vector3(endX, endY, endZ);
+    const stemStart = new THREE.Vector3(rRoot * Math.cos(angle), soilY + 0.002, rRoot * Math.sin(angle));
+    const stemEnd = new THREE.Vector3(rBase * Math.cos(angle + 0.15), yBase, rBase * Math.sin(angle + 0.15));
     const stemMid = new THREE.Vector3(
-      (stemStart.x + stemEnd.x) / 2 + Math.cos(cfg.angle) * 0.008,
-      (stemStart.y + stemEnd.y) / 2 + 0.012,
-      (stemStart.z + stemEnd.z) / 2 + Math.sin(cfg.angle) * 0.008
+      (stemStart.x + stemEnd.x) / 2,
+      Math.max(stemStart.y, stemEnd.y) + 0.004,
+      (stemStart.z + stemEnd.z) / 2
     );
 
     const stemCurve = new THREE.CatmullRomCurve3([stemStart, stemMid, stemEnd]);
-    const stemGeo = new THREE.TubeGeometry(stemCurve, 8, 0.0014, 6, false);
+    const stemGeo = new THREE.TubeGeometry(stemCurve, 6, 0.0013, 6, false);
     const stemMesh = new THREE.Mesh(stemGeo, stemMat);
     leafUnit.add(stemMesh);
 
-    // Parametric leaf blade
-    const leafMesh = createLeafMesh(cfg.len, cfg.w, 0.24, 0.22, cfg.mat);
+    const leafMesh = createLeafMesh(0.060, 0.042, 0.22, 0.18, youngLeafMat);
     leafMesh.position.copy(stemEnd);
-    leafMesh.rotation.y = -cfg.angle - Math.PI / 2;
-    leafMesh.rotation.x = cfg.pitch;
-    leafMesh.rotation.z = cfg.roll;
+    leafMesh.rotation.y = -angle - Math.PI / 2;
+    leafMesh.rotation.x = 0.38;
+    leafMesh.rotation.z = ((i % 3) - 1) * 0.12;
 
     leafUnit.add(leafMesh);
     foliageGroup.add(leafUnit);
-  });
+  }
+
+  // --- Tier 2: Inner Canopy (10 leaves, spreading at 45°) ---
+  for (let i = 0; i < 10; i++) {
+    const angle = (i * Math.PI * 2) / 10 + 0.4;
+    const rRoot = 0.018 + (i % 2) * 0.006;
+    const rBase = 0.036 + (i % 3) * 0.006;
+    const yBase = soilY + 0.026 + (i % 2) * 0.006;
+
+    const leafUnit = new THREE.Group();
+    leafUnit.name = `Inner_Leaf_${i + 1}`;
+
+    const stemStart = new THREE.Vector3(rRoot * Math.cos(angle), soilY + 0.002, rRoot * Math.sin(angle));
+    const stemEnd = new THREE.Vector3(rBase * Math.cos(angle + 0.1), yBase, rBase * Math.sin(angle + 0.1));
+    const stemMid = new THREE.Vector3(
+      (stemStart.x + stemEnd.x) / 2,
+      Math.max(stemStart.y, stemEnd.y) + 0.005,
+      (stemStart.z + stemEnd.z) / 2
+    );
+
+    const stemCurve = new THREE.CatmullRomCurve3([stemStart, stemMid, stemEnd]);
+    const stemGeo = new THREE.TubeGeometry(stemCurve, 6, 0.0014, 6, false);
+    const stemMesh = new THREE.Mesh(stemGeo, stemMat);
+    leafUnit.add(stemMesh);
+
+    const leafMesh = createLeafMesh(0.074, 0.052, 0.24, 0.22, i % 2 === 0 ? midLeafMat : matureLeafMat);
+    leafMesh.position.copy(stemEnd);
+    leafMesh.rotation.y = -angle - Math.PI / 2;
+    leafMesh.rotation.x = 0.68;
+    leafMesh.rotation.z = ((i % 4) - 1.5) * 0.14;
+
+    leafUnit.add(leafMesh);
+    foliageGroup.add(leafUnit);
+  }
+
+  // --- Tier 3: Mid-Rim Canopy (12 leaves, concealing opening) ---
+  for (let i = 0; i < 12; i++) {
+    const angle = (i * Math.PI * 2) / 12 + 0.15;
+    const rRoot = 0.025 + (i % 3) * 0.006;
+    const rBase = 0.054 + (i % 3) * 0.005;
+    const yBase = soilY + 0.020 + (i % 2) * 0.005;
+
+    const leafUnit = new THREE.Group();
+    leafUnit.name = `Mid_Leaf_${i + 1}`;
+
+    const stemStart = new THREE.Vector3(rRoot * Math.cos(angle), soilY + 0.002, rRoot * Math.sin(angle));
+    const stemEnd = new THREE.Vector3(rBase * Math.cos(angle + 0.08), yBase, rBase * Math.sin(angle + 0.08));
+    const stemMid = new THREE.Vector3(
+      (stemStart.x + stemEnd.x) / 2,
+      Math.max(stemStart.y, stemEnd.y) + 0.006,
+      (stemStart.z + stemEnd.z) / 2
+    );
+
+    const stemCurve = new THREE.CatmullRomCurve3([stemStart, stemMid, stemEnd]);
+    const stemGeo = new THREE.TubeGeometry(stemCurve, 6, 0.0014, 6, false);
+    const stemMesh = new THREE.Mesh(stemGeo, stemMat);
+    leafUnit.add(stemMesh);
+
+    const leafMesh = createLeafMesh(0.082, 0.058, 0.25, 0.25, matureLeafMat);
+    leafMesh.position.copy(stemEnd);
+    leafMesh.rotation.y = -angle - Math.PI / 2;
+    leafMesh.rotation.x = 0.95;
+    leafMesh.rotation.z = ((i % 5) - 2) * 0.15;
+
+    leafUnit.add(leafMesh);
+    foliageGroup.add(leafUnit);
+  }
+
+  // --- Tier 4: Outer Lip-Softening Canopy (10 leaves draping over rim) ---
+  for (let i = 0; i < 10; i++) {
+    const angle = (i * Math.PI * 2) / 10 + 0.3;
+    const rRoot = 0.030 + (i % 2) * 0.006;
+    const rBase = 0.072 + (i % 3) * 0.004;
+    const yBase = soilY + 0.016 + (i % 2) * 0.004;
+
+    const leafUnit = new THREE.Group();
+    leafUnit.name = `Outer_Leaf_${i + 1}`;
+
+    const stemStart = new THREE.Vector3(rRoot * Math.cos(angle), soilY + 0.002, rRoot * Math.sin(angle));
+    const stemEnd = new THREE.Vector3(rBase * Math.cos(angle + 0.05), yBase, rBase * Math.sin(angle + 0.05));
+    const stemMid = new THREE.Vector3(
+      (stemStart.x + stemEnd.x) / 2,
+      Math.max(stemStart.y, stemEnd.y) + 0.008,
+      (stemStart.z + stemEnd.z) / 2
+    );
+
+    const stemCurve = new THREE.CatmullRomCurve3([stemStart, stemMid, stemEnd]);
+    const stemGeo = new THREE.TubeGeometry(stemCurve, 6, 0.0015, 6, false);
+    const stemMesh = new THREE.Mesh(stemGeo, stemMat);
+    leafUnit.add(stemMesh);
+
+    const leafMesh = createLeafMesh(0.086, 0.062, 0.26, 0.28, matureLeafMat);
+    leafMesh.position.copy(stemEnd);
+    leafMesh.rotation.y = -angle - Math.PI / 2;
+    leafMesh.rotation.x = 1.25;
+    leafMesh.rotation.z = ((i % 3) - 1) * 0.18;
+
+    leafUnit.add(leafMesh);
+    foliageGroup.add(leafUnit);
+  }
 
   // =========================================================================
-  // 6. REALISTIC TRAILING VINES (Cascading gracefully down pot sides!)
-  // Matching the top shelf trailing plant in user's reference photo!
+  // 6. REALISTIC TRAILING VINES (3 Cascading Runners, Zero Pot Penetration)
   // =========================================================================
-  function createTrailingVine(startAngle, vinePoints, leafCount, namePrefix) {
+  function createTrailingVine(phi, len, count, namePrefix) {
     const vineGroup = new THREE.Group();
     vineGroup.name = namePrefix;
 
-    // 1. Vine Main Stem Spline
-    const curve = new THREE.CatmullRomCurve3(vinePoints);
-    const vineGeo = new THREE.TubeGeometry(curve, 24, 0.0016, 6, false);
+    const points = [
+      new THREE.Vector3(0.024 * Math.cos(phi - 0.2), soilY + 0.002, 0.024 * Math.sin(phi - 0.2)),
+      new THREE.Vector3(0.048 * Math.cos(phi - 0.08), 0.122, 0.048 * Math.sin(phi - 0.08)),
+      new THREE.Vector3(0.074 * Math.cos(phi), 0.134, 0.074 * Math.sin(phi)), // Crest over rim
+      new THREE.Vector3(0.080 * Math.cos(phi + 0.03), 0.098 * len + (1 - len) * 0.115, 0.080 * Math.sin(phi + 0.03)),
+      new THREE.Vector3(0.084 * Math.cos(phi + 0.06), 0.062 * len + (1 - len) * 0.110, 0.084 * Math.sin(phi + 0.06)),
+      new THREE.Vector3(0.086 * Math.cos(phi + 0.08), 0.026 * len + (1 - len) * 0.105, 0.086 * Math.sin(phi + 0.08)),
+      new THREE.Vector3(0.084 * Math.cos(phi + 0.10), -0.008 * len + (1 - len) * 0.100, 0.084 * Math.sin(phi + 0.10)),
+    ];
+
+    const curve = new THREE.CatmullRomCurve3(points);
+    const vineGeo = new THREE.TubeGeometry(curve, 32, 0.0018, 8, false);
     const vineMesh = new THREE.Mesh(vineGeo, stemMat);
     vineMesh.castShadow = true;
     vineGroup.add(vineMesh);
 
-    // 2. Cascading Leaves along the vine
-    for (let i = 0; i < leafCount; i++) {
-      const t = (i + 0.5) / leafCount;
-      const pointOnVine = curve.getPointAt(t);
+    for (let i = 0; i < count; i++) {
+      const t = 0.28 + (i / (count - 1)) * 0.68;
+      const pOnVine = curve.getPointAt(t);
       const tangent = curve.getTangentAt(t);
 
-      // Alternating leaf orientation along vine
+      const normal = new THREE.Vector3(pOnVine.x, 0, pOnVine.z).normalize();
       const isLeft = i % 2 === 0;
-      const leafLen = 0.065 - t * 0.022; // Leaves get naturally smaller toward vine tip
-      const leafW = 0.046 - t * 0.016;
-      const leafMat = t > 0.65 ? youngLeafMat : t > 0.3 ? midLeafMat : matureLeafMat;
 
-      const leafMesh = createLeafMesh(leafLen, leafW, 0.22, 0.26, leafMat);
+      const sideDir = new THREE.Vector3().crossVectors(tangent, normal).normalize();
+      const leafPos = pOnVine
+        .clone()
+        .add(normal.clone().multiplyScalar(0.006))
+        .add(sideDir.clone().multiplyScalar(isLeft ? 0.005 : -0.005));
 
-      // Offset slightly from vine stem
-      const sideOffset = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
-      const petioleVec = sideOffset.clone().multiplyScalar(isLeft ? 0.012 : -0.012);
+      const leafLen = 0.080 - (i / count) * 0.025;
+      const leafW = 0.058 - (i / count) * 0.018;
+      const leafMat = i === count - 1 ? youngLeafMat : isLeft ? matureLeafMat : midLeafMat;
 
-      leafMesh.position.copy(pointOnVine).add(petioleVec);
+      const leafMesh = createLeafMesh(leafLen, leafW, 0.24, 0.28, leafMat);
+      leafMesh.position.copy(leafPos);
 
-      // Natural downward draping angle
-      leafMesh.rotation.x = 1.35 + Math.sin(t * Math.PI) * 0.25;
-      leafMesh.rotation.y = startAngle + (isLeft ? 0.45 : -0.45);
-      leafMesh.rotation.z = isLeft ? 0.25 : -0.25;
+      const az = Math.atan2(normal.z, normal.x);
+      leafMesh.rotation.y = -az - Math.PI / 2 + (isLeft ? 0.25 : -0.25);
+      leafMesh.rotation.x = 1.40 + (1 - t) * 0.20;
+      leafMesh.rotation.z = isLeft ? 0.18 : -0.18;
 
       vineGroup.add(leafMesh);
     }
@@ -302,35 +382,9 @@ async function generatePhotorealisticPlantPot() {
     return vineGroup;
   }
 
-  // --- Vine 1: Long Front-Left Cascading Vine (draping down side of pot) ---
-  const vine1Points = [
-    new THREE.Vector3(-0.02, soilY + 0.005, 0.02),
-    new THREE.Vector3(-0.05, soilY + 0.018, 0.04),
-    new THREE.Vector3(-0.074, potHeight - 0.005, 0.055), // Passing over rim
-    new THREE.Vector3(-0.088, potHeight - 0.035, 0.060),
-    new THREE.Vector3(-0.092, potHeight - 0.075, 0.055),
-    new THREE.Vector3(-0.085, potHeight - 0.110, 0.048), // Draping near base
-  ];
-  foliageGroup.add(createTrailingVine(0.6, vine1Points, 6, 'Trailing_Vine_Front_Left'));
-
-  // --- Vine 2: Right Cascading Vine ---
-  const vine2Points = [
-    new THREE.Vector3(0.02, soilY + 0.005, 0.01),
-    new THREE.Vector3(0.045, soilY + 0.015, 0.025),
-    new THREE.Vector3(0.072, potHeight - 0.004, 0.030), // Passing over rim
-    new THREE.Vector3(0.084, potHeight - 0.038, 0.025),
-    new THREE.Vector3(0.088, potHeight - 0.080, 0.015),
-  ];
-  foliageGroup.add(createTrailingVine(-0.4, vine2Points, 5, 'Trailing_Vine_Right'));
-
-  // --- Vine 3: Soft Front-Right Droop ---
-  const vine3Points = [
-    new THREE.Vector3(0.01, soilY + 0.005, 0.02),
-    new THREE.Vector3(0.025, soilY + 0.016, 0.045),
-    new THREE.Vector3(0.035, potHeight - 0.006, 0.070),
-    new THREE.Vector3(0.040, potHeight - 0.045, 0.080),
-  ];
-  foliageGroup.add(createTrailingVine(1.2, vine3Points, 4, 'Trailing_Vine_Front'));
+  foliageGroup.add(createTrailingVine(2.15, 1.0, 7, 'Trailing_Vine_Front_Left'));
+  foliageGroup.add(createTrailingVine(-0.70, 0.85, 5, 'Trailing_Vine_Right'));
+  foliageGroup.add(createTrailingVine(1.15, 0.65, 4, 'Trailing_Vine_Front'));
 
   plantPotGroup.add(foliageGroup);
   scene.add(plantPotGroup);
