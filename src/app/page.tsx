@@ -5,6 +5,8 @@ import dynamic from 'next/dynamic';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
+import Link from 'next/link';
+
 import SmoothScroller from '@/components/SmoothScroller';
 
 // Dynamic import for the 3D Library Scene (WebGL, no SSR)
@@ -67,6 +69,13 @@ export default function Home() {
           </div>
 
           <div className="pointer-events-auto flex items-center gap-2">
+            <Link
+              href="/viewer"
+              className="px-3.5 py-1.5 rounded-full bg-amber-700 hover:bg-amber-800 text-white shadow-md text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              <span>3D Model Studio</span>
+              <span>↗</span>
+            </Link>
             <span className="px-3.5 py-1.5 rounded-full bg-white/80 backdrop-blur-md border border-amber-300/50 text-[11px] font-semibold text-amber-800 shadow-lg">
               7 Curated Authors
             </span>
