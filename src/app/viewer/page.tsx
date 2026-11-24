@@ -6,6 +6,7 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, useGLTF, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
 import Link from 'next/link';
+import { AdvancedBook3D } from '@/components/3d/AdvancedBook3D';
 
 // Fixed warm LED intensity at 30% for bookshelf
 const FIXED_LED_INTENSITY = 0.3;
@@ -166,24 +167,7 @@ function TrailingVineRunner({ points }: { points: THREE.Vector3[] }) {
   );
 }
 
-function ShortPetiole({
-  start,
-  end,
-}: {
-  start: THREE.Vector3;
-  end: THREE.Vector3;
-}) {
-  const geo = useMemo(() => {
-    const curve = new THREE.LineCurve3(start, end);
-    return new THREE.TubeGeometry(curve, 4, 0.0012, 6, false);
-  }, [start, end]);
 
-  return (
-    <mesh geometry={geo}>
-      <meshStandardMaterial color="#4a7936" roughness={0.42} />
-    </mesh>
-  );
-}
 
 function TrailingPothosPlantPot({ autoRotate }: { autoRotate: boolean }) {
   const groupRef = useRef<any>();
@@ -469,12 +453,111 @@ function TrailingPothosPlantPot({ autoRotate }: { autoRotate: boolean }) {
 }
 
 useGLTF.preload('/models/bookshelf_minimal_white.glb');
+useGLTF.preload('/models/table_lamp_realistic.glb');
+useGLTF.preload('/models/advanced_book_realistic.glb');
 
-type ModelKey = 'plant' | 'bookshelf';
+const COVER_PRESETS = [
+  {
+    name: '📖 Vintage Hardcover',
+    url: 'https://images.unsplash.com/photo-1543002588-bfa74002ed7e?auto=format&fit=crop&w=1200&q=80',
+    title: 'Vintage Hardcover',
+    author: 'Classic Literature',
+  },
+  {
+    name: '🎨 Desert / Alchemist',
+    url: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=1200&q=80',
+    title: 'The Alchemist',
+    author: 'Paulo Coelho',
+  },
+  {
+    name: '🌌 Cosmic Galaxy',
+    url: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80',
+    title: 'Cosmic Journey',
+    author: 'Carl Sagan',
+  },
+  {
+    name: '🏛️ Classical Marble',
+    url: 'https://images.unsplash.com/photo-1532012164546-f432f2e3777a?auto=format&fit=crop&w=1200&q=80',
+    title: 'Meditations',
+    author: 'Marcus Aurelius',
+  },
+  {
+    name: '🌿 Botanical Flora',
+    url: 'https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&w=1200&q=80',
+    title: 'Botanica',
+    author: 'Alexander Humboldt',
+  },
+];
+
+function BookViewerModel({
+  autoRotate,
+  coverUrl,
+}: {
+  autoRotate: boolean;
+  coverUrl: string;
+}) {
+  const groupRef = useRef<any>();
+
+  useFrame((_, delta) => {
+    if (autoRotate && groupRef.current) {
+      groupRef.current.rotation.y += delta * 0.42;
+    }
+  });
+
+  return (
+    <group ref={groupRef} position={[0, -0.02, 0]} rotation={[0.08, -0.32, 0.02]}>
+      <AdvancedBook3D
+        coverUrl={coverUrl}
+        title="The Alchemist"
+        author="Paulo Coelho"
+        interactive={false}
+        scale={1.08}
+      />
+    </group>
+  );
+}
+
+function LampViewerModel({ autoRotate }: { autoRotate: boolean }) {
+  const gltf = useGLTF('/models/table_lamp_realistic.glb') as any;
+  const groupRef = useRef<any>();
+
+  useFrame((_, delta) => {
+    if (autoRotate && groupRef.current) {
+      groupRef.current.rotation.y += delta * 0.42;
+    }
+  });
+
+  return (
+    <group ref={groupRef} position={[0, -0.12, 0]}>
+      <primitive object={gltf.scene.clone()} />
+      {/* Warm 2700K downward point light under shade */}
+      <pointLight
+        position={[0, 0.085, 0]}
+        color="#ffe2a8"
+        intensity={1.75}
+        distance={1.6}
+        decay={2}
+        castShadow
+      />
+      {/* Soft floor wash */}
+      <pointLight
+        position={[0, -0.06, 0]}
+        color="#ffd280"
+        intensity={0.5}
+        distance={0.8}
+        decay={2}
+      />
+    </group>
+  );
+}
+
+type ModelKey = 'plant' | 'bookshelf' | 'lamp' | 'book';
 
 export default function ModelViewerPage() {
-  const [selectedModel, setSelectedModel] = useState<ModelKey>('plant');
+  const [selectedModel, setSelectedModel] = useState<ModelKey>('book');
   const [autoRotate, setAutoRotate] = useState(false);
+  const [customCoverUrl, setCustomCoverUrl] = useState<string>(COVER_PRESETS[0].url);
+  const [inputUrl, setInputUrl] = useState<string>('');
 
   const modelInfo = {
     plant: {
@@ -496,6 +579,26 @@ export default function ModelViewerPage() {
       cameraFov: 44,
       shadowPos: [0, -1.045, 0] as [number, number, number],
       shadowScale: 3.8,
+    },
+    lamp: {
+      name: 'Minimalist Sculptural Table Lamp',
+      fileName: 'table_lamp_realistic.glb',
+      fileSize: '188.3 KB',
+      subTitle: 'Brushed Champagne Brass • Matte Dome Shade • Warm 2700K Glow',
+      cameraPos: [0, 0.06, 0.62] as [number, number, number],
+      cameraFov: 36,
+      shadowPos: [0, -0.125, 0] as [number, number, number],
+      shadowScale: 0.52,
+    },
+    book: {
+      name: 'Advanced Realistic 3D Hardcover Book',
+      fileName: 'advanced_book_realistic.glb',
+      fileSize: 'Custom Image UV Map',
+      subTitle: 'Concave Fore-Edge • Beveled Hardcover Boards • Debossed French Groove • Convex Spine',
+      cameraPos: [0, 0.06, 0.62] as [number, number, number],
+      cameraFov: 38,
+      shadowPos: [0, -0.17, 0] as [number, number, number],
+      shadowScale: 0.65,
     },
   }[selectedModel];
 
@@ -549,6 +652,26 @@ export default function ModelViewerPage() {
             >
               📚 Bookshelf
             </button>
+            <button
+              onClick={() => setSelectedModel('lamp')}
+              className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                selectedModel === 'lamp'
+                  ? 'bg-amber-500 text-neutral-950 shadow-md font-bold'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+            >
+              💡 Table Lamp
+            </button>
+            <button
+              onClick={() => setSelectedModel('book')}
+              className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                selectedModel === 'book'
+                  ? 'bg-amber-600 text-white shadow-md font-bold'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+            >
+              📖 Advanced Book
+            </button>
           </div>
 
           {selectedModel === 'bookshelf' && (
@@ -556,6 +679,22 @@ export default function ModelViewerPage() {
               <span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.6)]"></span>
               <span className="text-neutral-400">LED:</span>
               <span className="text-amber-300 font-mono font-semibold">30%</span>
+            </div>
+          )}
+
+          {selectedModel === 'lamp' && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-neutral-900 border border-white/10 text-xs">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.8)]"></span>
+              <span className="text-neutral-400">Light:</span>
+              <span className="text-amber-300 font-mono font-semibold">Warm 2700K</span>
+            </div>
+          )}
+
+          {selectedModel === 'book' && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-neutral-900 border border-white/10 text-xs">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]"></span>
+              <span className="text-neutral-400">Cover:</span>
+              <span className="text-emerald-300 font-mono font-semibold">Custom Image UV</span>
             </div>
           )}
 
@@ -574,12 +713,20 @@ export default function ModelViewerPage() {
             href={
               selectedModel === 'plant'
                 ? '/models/plant_pot_realistic.glb'
-                : '/models/bookshelf_minimal_white.glb'
+                : selectedModel === 'bookshelf'
+                ? '/models/bookshelf_minimal_white.glb'
+                : selectedModel === 'lamp'
+                ? '/models/table_lamp_realistic.glb'
+                : '/models/advanced_book_realistic.glb'
             }
             download={
               selectedModel === 'plant'
                 ? 'plant_pot_realistic.glb'
-                : 'bookshelf_minimal_white.glb'
+                : selectedModel === 'bookshelf'
+                ? 'bookshelf_minimal_white.glb'
+                : selectedModel === 'lamp'
+                ? 'table_lamp_realistic.glb'
+                : 'advanced_book_realistic.glb'
             }
             className="px-4 py-1.5 rounded-full text-xs font-bold bg-white text-neutral-950 hover:bg-neutral-200 transition-colors shadow-lg cursor-pointer"
           >
@@ -587,6 +734,52 @@ export default function ModelViewerPage() {
           </a>
         </div>
       </header>
+
+      {/* Floating Custom Cover Art Controls Bar for 3D Book */}
+      {selectedModel === 'book' && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30 flex flex-col md:flex-row items-center gap-2 px-4 py-2 rounded-2xl bg-neutral-950/90 backdrop-blur-xl border border-white/15 shadow-2xl animate-in fade-in slide-in-from-top-2 duration-300">
+          <span className="text-xs font-bold text-amber-300 whitespace-nowrap flex items-center gap-1.5">
+            <span>🎨</span> Cover Presets:
+          </span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {COVER_PRESETS.map((preset, idx) => (
+              <button
+                key={idx}
+                onClick={() => setCustomCoverUrl(preset.url)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                  customCoverUrl === preset.url
+                    ? 'bg-amber-500 text-neutral-950 font-bold shadow-md'
+                    : 'bg-white/10 hover:bg-white/20 text-neutral-300'
+                }`}
+              >
+                {preset.name}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1.5 w-full md:w-auto mt-1 md:mt-0">
+            <input
+              type="text"
+              placeholder="Paste any custom image URL..."
+              value={inputUrl}
+              onChange={(e) => setInputUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && inputUrl.trim()) {
+                  setCustomCoverUrl(inputUrl.trim());
+                }
+              }}
+              className="px-3 py-1 text-xs rounded-lg bg-neutral-900 border border-white/20 text-white placeholder-neutral-500 focus:outline-none focus:border-amber-400 w-56 font-mono"
+            />
+            <button
+              onClick={() => {
+                if (inputUrl.trim()) setCustomCoverUrl(inputUrl.trim());
+              }}
+              className="px-3 py-1 rounded-lg text-xs font-bold bg-amber-500 hover:bg-amber-400 text-neutral-950 transition-colors cursor-pointer shadow-md"
+            >
+              Apply
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 3D Viewport with OrbitControls */}
       <div className="w-full h-full">
@@ -618,14 +811,26 @@ export default function ModelViewerPage() {
           <Suspense fallback={null}>
             {selectedModel === 'plant' ? (
               <TrailingPothosPlantPot autoRotate={autoRotate} />
-            ) : (
+            ) : selectedModel === 'bookshelf' ? (
               <BookshelfModel autoRotate={autoRotate} />
+            ) : selectedModel === 'lamp' ? (
+              <LampViewerModel autoRotate={autoRotate} />
+            ) : (
+              <BookViewerModel autoRotate={autoRotate} coverUrl={customCoverUrl} />
             )}
 
             {/* Soft drop shadow strictly on floor plane */}
             <ContactShadows
               position={modelInfo.shadowPos}
-              opacity={selectedModel === 'plant' ? 0.6 : 0.45}
+              opacity={
+                selectedModel === 'plant'
+                  ? 0.6
+                  : selectedModel === 'lamp'
+                  ? 0.55
+                  : selectedModel === 'book'
+                  ? 0.6
+                  : 0.45
+              }
               scale={modelInfo.shadowScale}
               blur={1.8}
               far={1.0}
@@ -637,9 +842,33 @@ export default function ModelViewerPage() {
             enablePan={true}
             enableZoom={true}
             enableRotate={true}
-            minDistance={selectedModel === 'plant' ? 0.2 : 1.2}
-            maxDistance={selectedModel === 'plant' ? 1.6 : 6.0}
-            target={selectedModel === 'plant' ? [0, 0.06, 0] : [0, 0, 0]}
+            minDistance={
+              selectedModel === 'plant'
+                ? 0.2
+                : selectedModel === 'lamp'
+                ? 0.25
+                : selectedModel === 'book'
+                ? 0.25
+                : 1.2
+            }
+            maxDistance={
+              selectedModel === 'plant'
+                ? 1.6
+                : selectedModel === 'lamp'
+                ? 1.8
+                : selectedModel === 'book'
+                ? 2.2
+                : 6.0
+            }
+            target={
+              selectedModel === 'plant'
+                ? [0, 0.06, 0]
+                : selectedModel === 'lamp'
+                ? [0, 0.04, 0]
+                : selectedModel === 'book'
+                ? [0, 0, 0]
+                : [0, 0, 0]
+            }
             maxPolarAngle={Math.PI / 2 + 0.05}
           />
         </Canvas>
@@ -647,10 +876,14 @@ export default function ModelViewerPage() {
 
       {/* Bottom Hint */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 px-5 py-2 rounded-full bg-neutral-950/80 backdrop-blur-md border border-white/10 text-neutral-400 text-xs flex items-center gap-2 pointer-events-none shadow-2xl">
-        <span className="text-emerald-400">✦</span>
+        <span className="text-amber-400">✦</span>
         <span>
           {selectedModel === 'plant'
             ? 'Click & drag to rotate 360° • Scroll to inspect photographic transparent leaves & ceramic finish'
+            : selectedModel === 'lamp'
+            ? 'Click & drag to rotate 360° • Inspect brushed brass base, opal glass diffuser & warm 2700K downward glow'
+            : selectedModel === 'book'
+            ? 'Click & drag to rotate 360° • Select a preset or paste any image URL above to map your custom cover in real-time!'
             : 'Click & drag to rotate 360° • Scroll mouse wheel to inspect architectural compartments'}
         </span>
       </div>
