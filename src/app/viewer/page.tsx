@@ -26,14 +26,15 @@ function BookshelfModel({
     <group ref={groupRef} position={[0, -0.9, 0]}>
       <primitive object={gltf.scene.clone()} />
 
-      {/* Gentle physical soft point light under each shelf to simulate the minimal glow */}
-      {[0.4, 0.05, -0.3, -0.65].map((y, idx) => (
+      {/* Gentle physical soft point light at the REAR of each shelf washing over the backboard */}
+      {[0.75, 0.4, 0.05, -0.3, -0.65].map((y, idx) => (
         <pointLight
           key={idx}
-          position={[0, y, 0.12]}
-          color="#ffe8ba"
+          position={[0, y, -0.15]}
+          color="#ffdfa4"
           intensity={ledIntensity}
-          distance={0.7}
+          distance={0.85}
+          decay={2}
         />
       ))}
     </group>
@@ -114,10 +115,10 @@ export default function ModelViewerPage() {
           style={{ width: '100%', height: '100%' }}
         >
           {/* Subtle studio lighting */}
-          <ambientLight intensity={0.7} color="#fffcf5" />
-          <directionalLight position={[4, 6, 5]} intensity={1.2} color="#ffffff" castShadow />
-          <directionalLight position={[-4, 4, -3]} intensity={0.5} color="#e2e8f0" />
-          <directionalLight position={[0, -3, 2]} intensity={0.2} color="#fff5ea" />
+          <ambientLight intensity={0.85} color="#fffcf5" />
+          <directionalLight position={[3, 5, 4]} intensity={0.9} color="#ffffff" />
+          <directionalLight position={[-3, 4, 3]} intensity={0.5} color="#f8fafc" />
+          <directionalLight position={[0, -2, 3]} intensity={0.25} color="#fff7ed" />
 
           <Suspense fallback={null}>
             <BookshelfModel autoRotate={autoRotate} ledIntensity={ledIntensity} />

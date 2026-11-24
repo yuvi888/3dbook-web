@@ -22,7 +22,7 @@ global.FileReader = class FileReader {
 };
 
 async function generateBookshelfModel() {
-  console.log('Generating 3D Modern White Bookshelf Model...');
+  console.log('Regenerating 3D Bookshelf with Backlit Rear LED Strips...');
 
   const scene = new THREE.Scene();
   scene.name = 'Modern_White_Bookshelf_Collection';
@@ -38,25 +38,25 @@ async function generateBookshelfModel() {
     metalness: 0.02,
   });
 
-  // Soft Warm Off-White Backboard
+  // Soft Warm Off-White / Ivory Backboard
   const backboardMat = new THREE.MeshStandardMaterial({
     name: 'Warm_Backboard',
-    color: new THREE.Color('#f4ede2'),
-    roughness: 0.45,
+    color: new THREE.Color('#f5eee4'),
+    roughness: 0.42,
     metalness: 0.01,
   });
 
-  // Minimal Strip Light Material (Very gentle, subtle warm glow — NOT max glow)
+  // Warm LED Backlight Diffuser Strip (Soft, realistic architectural cove glow)
   const minimalStripLight = new THREE.MeshStandardMaterial({
     name: 'Minimal_Warm_LED_Strip',
-    color: new THREE.Color('#fffbf0'),
-    emissive: new THREE.Color('#ffe8ba'),
-    emissiveIntensity: 0.35, // Subtle, soft minimal glow
-    roughness: 0.5,
+    color: new THREE.Color('#fffdf5'),
+    emissive: new THREE.Color('#ffe2ad'),
+    emissiveIntensity: 0.55, // Warm architectural glow
+    roughness: 0.4,
     metalness: 0.0,
   });
 
-  // Slim Brushed Brass Accents
+  // Slim Brushed Brass Channel Housing
   const brassAccent = new THREE.MeshStandardMaterial({
     name: 'Brushed_Brass_Accent',
     color: new THREE.Color('#d4af37'),
@@ -77,10 +77,13 @@ async function generateBookshelfModel() {
   const innerW = totalW - boardThick * 2;
   const innerH = totalH - boardThick * 2;
 
+  // Rear position for the LED strip (just in front of backboard)
+  const rearStripZ = -depth / 2 + 0.038;
+
   // =========================================================================
   // 2. OUTER CABINET FRAME
   // =========================================================================
-  // Top Crown Header (Stepped modern profile)
+  // Top Crown Header
   const topCrownGeo = new THREE.BoxGeometry(totalW + 0.06, boardThick * 1.3, depth + 0.03);
   const topCrown = new THREE.Mesh(topCrownGeo, whiteLacquer);
   topCrown.name = 'Top_Crown_Molding';
@@ -88,7 +91,7 @@ async function generateBookshelfModel() {
   topCrown.castShadow = true;
   shelfGroup.add(topCrown);
 
-  // Bottom Base Plinth (Recessed clean architectural base)
+  // Bottom Base Plinth
   const plinthGeo = new THREE.BoxGeometry(totalW + 0.03, boardThick * 1.4, depth + 0.02);
   const plinth = new THREE.Mesh(plinthGeo, whiteLacquer);
   plinth.name = 'Base_Plinth';
@@ -119,7 +122,8 @@ async function generateBookshelfModel() {
   shelfGroup.add(backPanel);
 
   // =========================================================================
-  // 3. HORIZONTAL SHELF TIERS & MINIMAL EMBEDDED STRIP LIGHTS
+  // 3. HORIZONTAL SHELF TIERS WITH REAR COVE BACKLIGHTING
+  // Moved to BACK side of shelf to illuminate the backboard with zero front shadow line!
   // =========================================================================
   const shelfCount = 4; // 4 shelves = 5 display tiers
   const tierHeight = (innerH - boardThick * 0.7) / (shelfCount + 1);
@@ -136,43 +140,50 @@ async function generateBookshelfModel() {
     shelfBoard.receiveShadow = true;
     shelfGroup.add(shelfBoard);
 
-    // B. Recessed Channel Profile for LED Strip
-    const channelGeo = new THREE.BoxGeometry(innerW * 0.92, 0.006, 0.024);
+    // B. Recessed Channel Profile at the REAR BACK of the Shelf
+    const channelGeo = new THREE.BoxGeometry(innerW * 0.94, 0.005, 0.022);
     const channel = new THREE.Mesh(channelGeo, brassAccent);
-    channel.name = `Shelf_Tier_${i + 1}_LED_Channel`;
-    channel.position.set(0, shelfY - boardThick / 2 - 0.003, depth / 2 - 0.07);
+    channel.name = `Shelf_Tier_${i + 1}_Rear_LED_Channel`;
+    channel.position.set(0, shelfY - boardThick / 2 - 0.002, rearStripZ);
+    // Do NOT cast shadow to prevent any black lines
+    channel.castShadow = false;
     shelfGroup.add(channel);
 
-    // C. Minimal Warm Glow Strip Light Diffuser (Embedded inside the channel)
-    const stripGeo = new THREE.BoxGeometry(innerW * 0.90, 0.003, 0.018);
+    // C. Minimal Warm Glow Strip Light Diffuser (Rear Backlighting)
+    const stripGeo = new THREE.BoxGeometry(innerW * 0.92, 0.003, 0.016);
     const strip = new THREE.Mesh(stripGeo, minimalStripLight);
-    strip.name = `Shelf_Tier_${i + 1}_Minimal_Strip_Light`;
-    strip.position.set(0, shelfY - boardThick / 2 - 0.006, depth / 2 - 0.07);
+    strip.name = `Shelf_Tier_${i + 1}_Rear_Strip_Light`;
+    strip.position.set(0, shelfY - boardThick / 2 - 0.005, rearStripZ);
+    strip.castShadow = false;
     shelfGroup.add(strip);
   }
 
-  // Top Compartment LED Strip (under the top crown header)
-  const topStripGeo = new THREE.BoxGeometry(innerW * 0.90, 0.003, 0.018);
+  // Top Compartment Rear LED Strip (under top crown header at back)
+  const topStripGeo = new THREE.BoxGeometry(innerW * 0.92, 0.003, 0.016);
   const topStrip = new THREE.Mesh(topStripGeo, minimalStripLight);
-  topStrip.name = 'Top_Compartment_Minimal_Strip_Light';
-  topStrip.position.set(0, totalH / 2 - boardThick * 1.3 - 0.004, depth / 2 - 0.07);
+  topStrip.name = 'Top_Compartment_Rear_Strip_Light';
+  topStrip.position.set(0, totalH / 2 - boardThick * 1.3 - 0.004, rearStripZ);
+  topStrip.castShadow = false;
   shelfGroup.add(topStrip);
 
   // =========================================================================
-  // 4. ELEGANT VERTICAL ASYMMETRIC DIVIDERS (Modern Design Touch)
+  // 4. CLEAN ELEGANT ASYMMETRIC DIVIDERS
+  // Sitting flush with clean depth (0.28m) so they don't block the rear backlight
   // =========================================================================
-  // Mid-upper divider
-  const midDividerGeo = new THREE.BoxGeometry(boardThick * 0.8, tierHeight - boardThick, depth * 0.85);
+  const dividerDepth = depth * 0.72; // Shorter depth so rear backlight washes seamlessly behind it!
+
+  // Upper divider
+  const midDividerGeo = new THREE.BoxGeometry(boardThick * 0.8, tierHeight - boardThick - 0.004, dividerDepth);
   const midDivider = new THREE.Mesh(midDividerGeo, whiteLacquer);
-  midDivider.name = 'Asymmetric_Divider_Tier_3';
-  midDivider.position.set(0.28, -totalH / 2 + boardThick * 1.4 + 3.5 * tierHeight, 0.01);
+  midDivider.name = 'Asymmetric_Divider_Tier_4';
+  midDivider.position.set(0.32, -totalH / 2 + boardThick * 1.4 + 3.5 * tierHeight, 0.03);
   shelfGroup.add(midDivider);
 
-  // Lower-left divider
-  const lowDividerGeo = new THREE.BoxGeometry(boardThick * 0.8, tierHeight - boardThick, depth * 0.85);
+  // Lower divider
+  const lowDividerGeo = new THREE.BoxGeometry(boardThick * 0.8, tierHeight - boardThick - 0.004, dividerDepth);
   const lowDivider = new THREE.Mesh(lowDividerGeo, whiteLacquer);
-  lowDivider.name = 'Asymmetric_Divider_Tier_1';
-  lowDivider.position.set(-0.35, -totalH / 2 + boardThick * 1.4 + 1.5 * tierHeight, 0.01);
+  lowDivider.name = 'Asymmetric_Divider_Tier_2';
+  lowDivider.position.set(-0.35, -totalH / 2 + boardThick * 1.4 + 1.5 * tierHeight, 0.03);
   shelfGroup.add(lowDivider);
 
   scene.add(shelfGroup);
@@ -186,7 +197,7 @@ async function generateBookshelfModel() {
   const exporter = new GLTFExporter();
 
   // Export Binary .GLB
-  console.log('Exporting binary .glb file...');
+  console.log('Exporting updated binary .glb file...');
   const glbBuffer = await exporter.parseAsync(scene, { binary: true });
   const glbPath = path.join(outputDir, 'bookshelf_minimal_white.glb');
   fs.writeFileSync(glbPath, Buffer.from(glbBuffer));
@@ -194,14 +205,14 @@ async function generateBookshelfModel() {
   console.log(`Saved ${glbPath} (${glbSize} KB)`);
 
   // Export Human-Readable .GLTF
-  console.log('Exporting readable .gltf file...');
+  console.log('Exporting updated readable .gltf file...');
   const gltfJson = await exporter.parseAsync(scene, { binary: false });
   const gltfPath = path.join(outputDir, 'bookshelf_minimal_white.gltf');
   fs.writeFileSync(gltfPath, JSON.stringify(gltfJson, null, 2));
   const gltfSize = (fs.statSync(gltfPath).size / 1024).toFixed(1);
   console.log(`Saved ${gltfPath} (${gltfSize} KB)`);
 
-  console.log('3D Bookshelf Model Generated Successfully!');
+  console.log('Bookshelf with Rear Backlighting Generated Successfully!');
 }
 
 generateBookshelfModel().catch(console.error);
