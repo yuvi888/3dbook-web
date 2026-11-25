@@ -120,7 +120,13 @@ function buildCurvedVistaGeometry(width: number, height: number, curveDepth = 0.
   return geo;
 }
 
-export function RealisticGlassWindow3D({ autoRotate }: { autoRotate: boolean }) {
+export function RealisticGlassWindow3D({
+  autoRotate,
+  variant = 'left',
+}: {
+  autoRotate: boolean;
+  variant?: 'left' | 'right';
+}) {
   const groupRef = useRef<any>();
 
   useFrame((_, delta) => {
@@ -129,10 +135,11 @@ export function RealisticGlassWindow3D({ autoRotate }: { autoRotate: boolean }) 
     }
   });
 
-  // Real generated photorealistic sky & grass lawn image positioned outside the glass window
-  const outdoorSkyGrassTex = useLoader(THREE.TextureLoader, '/textures/outdoor_sky_grass.jpg');
-  outdoorSkyGrassTex.colorSpace = THREE.SRGBColorSpace;
-  outdoorSkyGrassTex.anisotropy = 8;
+  // Real generated photorealistic outdoor view placed outside the glass window (Left = Sky & Grass, Right = Sea & Clouds)
+  const sceneryPath = variant === 'right' ? '/textures/outdoor_sea_clouds.jpg' : '/textures/outdoor_sky_grass.jpg';
+  const outdoorVistaTex = useLoader(THREE.TextureLoader, sceneryPath);
+  outdoorVistaTex.colorSpace = THREE.SRGBColorSpace;
+  outdoorVistaTex.anisotropy = 8;
 
   const winW = 1.24;
   const winH = 1.62;
@@ -185,7 +192,7 @@ export function RealisticGlassWindow3D({ autoRotate }: { autoRotate: boolean }) 
     const vBackGeo = new THREE.PlaneGeometry(1.22, 1.60);
 
     const vMat = new THREE.MeshBasicMaterial({
-      map: outdoorSkyGrassTex,
+      map: outdoorVistaTex,
       toneMapped: false,
     });
 
@@ -207,7 +214,7 @@ export function RealisticGlassWindow3D({ autoRotate }: { autoRotate: boolean }) 
       vistaGeo: vGeo,
       vistaBackGeo: vBackGeo,
     };
-  }, [outdoorSkyGrassTex]);
+  }, [outdoorVistaTex]);
 
   const innerW = winW - 0.11;
   const innerH = winH - 0.11;

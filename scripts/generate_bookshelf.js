@@ -1,302 +1,172 @@
-const THREE = require('three');
-const { GLTFExporter } = require('three/examples/jsm/exporters/GLTFExporter.js');
-const fs = require('fs');
-const path = require('path');
+const { THREE, exportSceneModels } = require('./botanical_geo_node');
 
-// Polyfill FileReader for Node.js GLTFExporter
-global.FileReader = class FileReader {
-  readAsArrayBuffer(blob) {
-    blob.arrayBuffer().then((buf) => {
-      this.result = buf;
-      if (this.onloadend) this.onloadend();
-    });
+function addRoundedRectPath(path, w, h, r, cw) {
+  const hw = w / 2;
+  const hh = h / 2;
+  const rad = Math.min(r, hw * 0.45, hh * 0.45);
+  if (!cw) {
+    path.moveTo(-hw + rad, -hh);
+    path.lineTo(hw - rad, -hh);
+    path.quadraticCurveTo(hw, -hh, hw, -hh + rad);
+    path.lineTo(hw, hh - rad);
+    path.quadraticCurveTo(hw, hh, hw - rad, hh);
+    path.lineTo(-hw + rad, hh);
+    path.quadraticCurveTo(-hw, hh, -hw, hh - rad);
+    path.lineTo(-hw, -hh + rad);
+    path.quadraticCurveTo(-hw, -hh, -hw + rad, -hh);
+  } else {
+    path.moveTo(-hw + rad, -hh);
+    path.quadraticCurveTo(-hw, -hh, -hw, -hh + rad);
+    path.lineTo(-hw, hh - rad);
+    path.quadraticCurveTo(-hw, hh, -hw + rad, hh);
+    path.lineTo(hw - rad, hh);
+    path.quadraticCurveTo(hw, hh, hw, hh - rad);
+    path.lineTo(hw, -hh + rad);
+    path.quadraticCurveTo(hw, -hh, hw - rad, -hh);
+    path.lineTo(-hw + rad, -hh);
   }
-  readAsDataURL(blob) {
-    blob.arrayBuffer().then((buf) => {
-      this.result =
-        'data:application/octet-stream;base64,' +
-        Buffer.from(buf).toString('base64');
-      if (this.onloadend) this.onloadend();
-    });
-  }
-};
+}
 
-function buildCarvedCorbelGeometry() {
-  const s = new THREE.Shape();
-  s.moveTo(0, 0);
-  s.lineTo(0.20, 0);
-  s.lineTo(0.20, -0.024);
-  s.bezierCurveTo(0.14, -0.032, 0.13, -0.088, 0.085, -0.105);
-  s.bezierCurveTo(0.045, -0.120, 0.042, -0.158, 0.015, -0.172);
-  s.lineTo(0, -0.175);
-  s.closePath();
+function buildHollowRoundedFrameGeometry(outerW, outerH, innerW, innerH, depth, outerR, innerR, bevel = 0.004) {
+  const outer = new THREE.Shape();
+  addRoundedRectPath(outer, outerW - bevel * 2, outerH - bevel * 2, outerR, false);
+  const inner = new THREE.Path();
+  addRoundedRectPath(inner, innerW + bevel * 2, innerH + bevel * 2, innerR, true);
+  outer.holes.push(inner);
 
-  const geo = new THREE.ExtrudeGeometry(s, {
+  const innerDepth = Math.max(0.002, depth - bevel * 2);
+  const geo = new THREE.ExtrudeGeometry(outer, {
     steps: 1,
-    depth: 0.042,
-    bevelEnabled: true,
-    bevelThickness: 0.004,
-    bevelSize: 0.004,
+    depth: innerDepth,
+    bevelEnabled: bevel > 0,
+    bevelThickness: bevel,
+    bevelSize: bevel,
     bevelSegments: 3,
     curveSegments: 16,
   });
-  geo.translate(0, 0, -0.021);
+  geo.translate(0, 0, -innerDepth / 2);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function buildKnifeEdgeShelfGeometry(width, thickness, zBack, zFront) {
+  const halfH = thickness / 2;
+  const s = new THREE.Shape();
+  s.moveTo(zBack, -halfH);
+  s.lineTo(zFront - 0.044, -halfH);
+  s.lineTo(zFront, -0.003);
+  s.lineTo(zFront, halfH - 0.003);
+  s.lineTo(zFront - 0.003, halfH);
+  s.lineTo(zBack, halfH);
+  s.closePath();
+
+  const geo = new THREE.ExtrudeGeometry(s, { steps: 1, depth: width, bevelEnabled: false });
+  geo.translate(0, 0, -width / 2);
   geo.rotateY(-Math.PI / 2);
   geo.computeVertexNormals();
   return geo;
 }
 
-function buildArchSpandrelGeometry(spanW, archHeight, depth) {
-  const hw = spanW / 2;
-  const r = hw * 0.88;
-  const shape = new THREE.Shape();
+function buildChamferedDividerGeometry(thickness, height, zBack, zFront) {
+  const halfT = thickness / 2;
+  const s = new THREE.Shape();
+  s.moveTo(zBack, -halfT);
+  s.lineTo(zFront - 0.006, -halfT);
+  s.lineTo(zFront, -halfT + 0.004);
+  s.lineTo(zFront, halfT - 0.004);
+  s.lineTo(zFront - 0.006, halfT);
+  s.lineTo(zBack, halfT);
+  s.closePath();
 
-  shape.moveTo(-hw, 0);
-  shape.lineTo(-hw, archHeight);
-  shape.lineTo(hw, archHeight);
-  shape.lineTo(hw, 0);
-  shape.lineTo(r, 0);
-  shape.absarc(0, 0, r, 0, Math.PI, false);
-  shape.lineTo(-hw, 0);
-
-  const geo = new THREE.ExtrudeGeometry(shape, {
-    steps: 1,
-    depth,
-    bevelEnabled: true,
-    bevelThickness: 0.003,
-    bevelSize: 0.003,
-    bevelSegments: 3,
-    curveSegments: 28,
-  });
-  geo.translate(0, 0, -depth / 2);
+  const geo = new THREE.ExtrudeGeometry(s, { steps: 1, depth: height, bevelEnabled: false });
+  geo.translate(0, 0, -height / 2);
+  geo.rotateY(-Math.PI / 2);
+  geo.rotateZ(-Math.PI / 2);
   geo.computeVertexNormals();
   return geo;
 }
 
-function buildFlutedPilasterGeometry(width, height, depth) {
-  const geo = new THREE.BoxGeometry(width, height, depth, 18, 1, 1);
+function buildFlutedOffWhiteBackGeometry(width, height, depth) {
+  const geo = new THREE.BoxGeometry(width, height, depth, 260, 1, 1);
   const pos = geo.attributes.position;
+  const period = 0.032;
   for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const y = pos.getY(i);
     const z = pos.getZ(i);
-    if (z > depth * 0.45 && Math.abs(y) < height * 0.44) {
-      const normX = x / (width * 0.36);
-      if (Math.abs(normX) <= 1.0) {
-        const fluteWave = Math.cos(normX * Math.PI * 3);
-        if (fluteWave > 0) {
-          pos.setZ(i, z - fluteWave * 0.0035);
-        }
-      }
+    if (z > 0) {
+      const x = pos.getX(i);
+      const wave = 0.5 + 0.5 * Math.cos((x / period) * Math.PI * 2);
+      const reed = Math.pow(wave, 0.72) * 0.0036;
+      pos.setZ(i, z + reed);
     }
   }
+  pos.needsUpdate = true;
   geo.computeVertexNormals();
   return geo;
 }
 
-async function generateWoodenWallBookshelf() {
-  console.log('Generating Wall-Mounted Classic Aged Walnut Architectural Bookshelf...');
-
+async function generateModernWhiteBookshelf() {
   const scene = new THREE.Scene();
-  scene.name = 'Wall_Mounted_Aged_Wood_Bookshelf';
+  scene.name = 'Modern_White_Fluted_Illuminated_Bookshelf';
 
-  const agedWalnutMat = new THREE.MeshStandardMaterial({
-    name: 'Aged_Heritage_Walnut',
-    color: new THREE.Color('#6c472d'),
-    roughness: 0.48,
-    metalness: 0.03,
-  });
+  const whiteMat = new THREE.MeshStandardMaterial({ color: '#faf9f5', roughness: 0.30, metalness: 0.02 });
+  const offWhiteFlutedMat = new THREE.MeshStandardMaterial({ color: '#edeae2', roughness: 0.62, metalness: 0.02 });
+  const rearOffWhiteMat = new THREE.MeshStandardMaterial({ color: '#f1efe8', roughness: 0.52, metalness: 0.01 });
+  const champagneMat = new THREE.MeshStandardMaterial({ color: '#d2c2a3', roughness: 0.28, metalness: 0.82 });
+  const mountMat = new THREE.MeshStandardMaterial({ color: '#d5d1c8', roughness: 0.36, metalness: 0.45 });
+  const ledMat = new THREE.MeshStandardMaterial({ color: '#fff9ed', emissive: '#ffe09e', emissiveIntensity: 2.2 });
 
-  const plankBackMat = new THREE.MeshStandardMaterial({
-    name: 'Tongue_Groove_Aged_Backboard',
-    color: new THREE.Color('#563823'),
-    roughness: 0.56,
-    metalness: 0.02,
-  });
+  const root = new THREE.Group();
+  const add = (geo, mat, x, y, z) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    root.add(m);
+  };
 
-  const agedBrassMat = new THREE.MeshStandardMaterial({
-    name: 'Aged_Patinated_Brass',
-    color: new THREE.Color('#b69148'),
-    roughness: 0.32,
-    metalness: 0.86,
-  });
+  // Fluted Warm Off-White Interior Back Panel & Clean Off-White Exterior Casing
+  add(buildFlutedOffWhiteBackGeometry(1.622, 1.362, 0.018), offWhiteFlutedMat, 0, 0, -0.134);
+  add(new THREE.BoxGeometry(1.618, 1.358, 0.014), rearOffWhiteMat, 0, 0, -0.150);
 
-  const shelfGroup = new THREE.Group();
-  shelfGroup.name = 'Bookshelf_Root';
+  // Rear Concealed Aluminum French Cleats
+  [0.44, -0.38].forEach((my) => add(new THREE.BoxGeometry(1.44, 0.044, 0.012), mountMat, 0, my, -0.163));
+  [-0.68, 0.68].forEach((kx) => add(new THREE.BoxGeometry(0.040, 0.056, 0.010), mountMat, kx, 0.52, -0.162));
 
-  const totalW = 1.66;
-  const totalH = 1.24;
-  const depth = 0.34;
-  const boardT = 0.030;
-  const crownH = 0.072;
-  const apronH = 0.044;
+  // Rounded Outer Architectural Portal & Champagne Inlay Frame
+  add(buildHollowRoundedFrameGeometry(1.700, 1.440, 1.616, 1.356, 0.320, 0.044, 0.016, 0.004), whiteMat, 0, 0, 0);
+  add(buildHollowRoundedFrameGeometry(1.636, 1.376, 1.614, 1.354, 0.007, 0.020, 0.016, 0.001), champagneMat, 0, 0, 0.157);
 
-  const innerW = totalW - boardT * 2;
-  const topShelfY = totalH / 2 - crownH - boardT / 2;
-  const botShelfY = -totalH / 2 + apronH + boardT / 2;
-  const interiorTop = topShelfY - boardT / 2;
-  const interiorBot = botShelfY + boardT / 2;
-  const interiorH = interiorTop - interiorBot;
-  const interiorCenterY = (interiorTop + interiorBot) / 2;
+  // Knife-Edge Shelves & Champagne Pinstripe Reveals
+  add(buildKnifeEdgeShelfGeometry(1.620, 0.028, -0.128, 0.150), whiteMat, 0.0, 0.360, 0.0);
+  add(buildKnifeEdgeShelfGeometry(1.196, 0.028, -0.128, 0.150), whiteMat, 0.214, 0.025, 0.0);
+  add(buildKnifeEdgeShelfGeometry(1.216, 0.028, -0.128, 0.150), whiteMat, -0.204, -0.320, 0.0);
 
-  const divThick = 0.032;
-  const leftDivX = -0.336;
-  const rightDivX = 0.336;
-  const leftBayW = leftDivX - divThick / 2 - (-innerW / 2);
-  const leftBayCenterX = (-innerW / 2 + (leftDivX - divThick / 2)) / 2;
-  const centerBayW = rightDivX - leftDivX - divThick;
-  const rightBayW = innerW / 2 - (rightDivX + divThick / 2);
-  const rightBayCenterX = (rightDivX + divThick / 2 + innerW / 2) / 2;
+  add(new THREE.BoxGeometry(1.612, 0.0025, 0.0025), champagneMat, 0.0, 0.364, 0.150);
+  add(new THREE.BoxGeometry(1.186, 0.0025, 0.0025), champagneMat, 0.214, 0.029, 0.150);
+  add(new THREE.BoxGeometry(1.206, 0.0025, 0.0025), champagneMat, -0.204, -0.316, 0.150);
 
-  const shelfDepth = depth - 0.024;
-  const shelfZ = -0.004;
+  // Recessed Vertical Partitions (100% Empty 9-Compartment Layout)
+  add(buildChamferedDividerGeometry(0.024, 0.320, -0.128, 0.138), whiteMat, 0.08, 0.522, 0.0);
+  add(buildChamferedDividerGeometry(0.024, 0.676, -0.128, 0.138), whiteMat, -0.38, 0.020, 0.0);
+  add(buildChamferedDividerGeometry(0.024, 0.706, -0.128, 0.138), whiteMat, 0.40, -0.329, 0.0);
+  add(buildChamferedDividerGeometry(0.024, 0.330, -0.128, 0.138), whiteMat, 0.26, 0.193, 0.0);
+  add(buildChamferedDividerGeometry(0.024, 0.358, -0.128, 0.138), whiteMat, -0.22, -0.501, 0.0);
 
-  // 1. Crown Cornice & Casework Top/Bottom
-  const crownTop = new THREE.Mesh(new THREE.BoxGeometry(totalW + 0.088, 0.028, depth + 0.044), agedWalnutMat);
-  crownTop.position.set(0, totalH / 2 - 0.014, 0.022);
-  shelfGroup.add(crownTop);
+  // Bright Linear Compartment LED Diffusers + Tall-Bay Vertical Accent LEDs
+  [
+    [-0.36, 0.676, 0.025, 0.80, 0.005, 0.014],
+    [0.44, 0.676, 0.025, 0.64, 0.005, 0.014],
+    [-0.59, 0.344, 0.025, 0.36, 0.005, 0.014],
+    [-0.06, 0.344, 0.025, 0.56, 0.005, 0.014],
+    [0.53, 0.344, 0.025, 0.47, 0.005, 0.014],
+    [0.01, 0.009, 0.025, 0.70, 0.005, 0.014],
+    [0.60, 0.009, 0.025, 0.34, 0.005, 0.014],
+    [-0.51, -0.336, 0.025, 0.52, 0.005, 0.014],
+    [0.09, -0.336, 0.025, 0.54, 0.005, 0.014],
+    [-0.804, 0.020, -0.095, 0.006, 0.58, 0.010],
+    [0.804, -0.330, -0.095, 0.006, 0.60, 0.010],
+  ].forEach(([lx, ly, lz, w, h, d]) => add(new THREE.BoxGeometry(w, h, d), ledMat, lx, ly, lz));
 
-  const crownMid = new THREE.Mesh(new THREE.BoxGeometry(totalW + 0.046, 0.022, depth + 0.024), agedWalnutMat);
-  crownMid.position.set(0, totalH / 2 - 0.038, 0.012);
-  shelfGroup.add(crownMid);
-
-  const frieze = new THREE.Mesh(new THREE.BoxGeometry(totalW + 0.016, 0.020, depth + 0.010), agedWalnutMat);
-  frieze.position.set(0, totalH / 2 - 0.059, 0.005);
-  shelfGroup.add(frieze);
-
-  const topBoard = new THREE.Mesh(new THREE.BoxGeometry(totalW, boardT, depth), agedWalnutMat);
-  topBoard.position.set(0, topShelfY, 0);
-  shelfGroup.add(topBoard);
-
-  const botBoard = new THREE.Mesh(new THREE.BoxGeometry(totalW, boardT, depth), agedWalnutMat);
-  botBoard.position.set(0, botShelfY, 0);
-  shelfGroup.add(botBoard);
-
-  const botNosing = new THREE.Mesh(new THREE.BoxGeometry(totalW + 0.01, boardT + 0.008, 0.012), agedWalnutMat);
-  botNosing.position.set(0, botShelfY, depth / 2 + 0.005);
-  shelfGroup.add(botNosing);
-
-  // 2. Wall-Mounted Lower Apron & 3 Carved Timber Corbels
-  const apron = new THREE.Mesh(new THREE.BoxGeometry(totalW - 0.016, apronH, depth - 0.012), agedWalnutMat);
-  apron.position.set(0, -totalH / 2 + apronH / 2, -0.005);
-  shelfGroup.add(apron);
-
-  const corbelGeo = buildCarvedCorbelGeometry();
-  [-0.64, 0, 0.64].forEach((cx, idx) => {
-    const corbel = new THREE.Mesh(corbelGeo, agedWalnutMat);
-    corbel.position.set(cx, -totalH / 2 + 0.002, -depth / 2);
-    corbel.name = `Wall_Corbel_${idx + 1}`;
-    shelfGroup.add(corbel);
-  });
-
-  // 3. Outer Walls, Backboard & Rear French-Cleat Mounts
-  const leftSide = new THREE.Mesh(new THREE.BoxGeometry(boardT, interiorH, depth), agedWalnutMat);
-  leftSide.position.set(-totalW / 2 + boardT / 2, interiorCenterY, 0);
-  shelfGroup.add(leftSide);
-
-  const rightSide = new THREE.Mesh(new THREE.BoxGeometry(boardT, interiorH, depth), agedWalnutMat);
-  rightSide.position.set(totalW / 2 - boardT / 2, interiorCenterY, 0);
-  shelfGroup.add(rightSide);
-
-  const backBoard = new THREE.Mesh(new THREE.BoxGeometry(innerW, interiorH + 0.01, 0.018), plankBackMat);
-  backBoard.position.set(0, interiorCenterY, -depth / 2 + 0.009);
-  shelfGroup.add(backBoard);
-
-  [0.34, -0.34].forEach((cy, idx) => {
-    const cleat = new THREE.Mesh(new THREE.BoxGeometry(totalW - 0.14, 0.055, 0.014), agedWalnutMat);
-    cleat.position.set(0, cy, -depth / 2 - 0.006);
-    cleat.name = `French_Cleat_Rail_${idx + 1}`;
-    shelfGroup.add(cleat);
-  });
-
-  [-0.68, 0.68].forEach((kx, idx) => {
-    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.072, 0.004), agedBrassMat);
-    plate.position.set(kx, 0.44, -depth / 2 - 0.008);
-    plate.name = `Brass_Keyhole_Plate_${idx + 1}`;
-    shelfGroup.add(plate);
-  });
-
-  // 4. Fluted Pilasters & Bay Dividers
-  [leftDivX, rightDivX].forEach((dx) => {
-    const div = new THREE.Mesh(new THREE.BoxGeometry(divThick, interiorH, shelfDepth), agedWalnutMat);
-    div.position.set(dx, interiorCenterY, shelfZ);
-    shelfGroup.add(div);
-  });
-
-  const pilasterOuterGeo = buildFlutedPilasterGeometry(0.044, interiorH + boardT * 2, 0.020);
-  const pilasterInnerGeo = buildFlutedPilasterGeometry(0.042, interiorH, 0.020);
-
-  [-totalW / 2 + 0.022, totalW / 2 - 0.022].forEach((px) => {
-    const p = new THREE.Mesh(pilasterOuterGeo, agedWalnutMat);
-    p.position.set(px, interiorCenterY, depth / 2 + 0.006);
-    shelfGroup.add(p);
-  });
-  [leftDivX, rightDivX].forEach((px) => {
-    const p = new THREE.Mesh(pilasterInnerGeo, agedWalnutMat);
-    p.position.set(px, interiorCenterY, depth / 2 + 0.004);
-    shelfGroup.add(p);
-  });
-
-  // 5. Internal Architectural Shelves, Arched Gallery & Wainscot Panel
-  function addShelf(w, x, y) {
-    const board = new THREE.Mesh(new THREE.BoxGeometry(w, boardT, shelfDepth), agedWalnutMat);
-    board.position.set(x, y, shelfZ);
-    shelfGroup.add(board);
-
-    const nose = new THREE.Mesh(new THREE.BoxGeometry(w, boardT + 0.006, 0.012), agedWalnutMat);
-    nose.position.set(x, y, shelfZ + shelfDepth / 2 + 0.005);
-    shelfGroup.add(nose);
-  }
-
-  addShelf(leftBayW, leftBayCenterX, 0.21);
-  addShelf(leftBayW, leftBayCenterX, -0.24);
-  addShelf(centerBayW, 0, -0.18);
-  addShelf(rightBayW, rightBayCenterX, 0.14);
-  addShelf(rightBayW, rightBayCenterX, -0.20);
-
-  const arch = new THREE.Mesh(buildArchSpandrelGeometry(centerBayW, 0.25, 0.028), agedWalnutMat);
-  arch.position.set(0, interiorTop - 0.25, depth / 2 - 0.026);
-  arch.name = 'Center_Arch_Spandrel';
-  shelfGroup.add(arch);
-
-  const keystone = new THREE.Mesh(new THREE.BoxGeometry(0.054, 0.056, 0.018), agedWalnutMat);
-  keystone.position.set(0, interiorTop - 0.024, depth / 2 - 0.008);
-  shelfGroup.add(keystone);
-
-  const wainscot = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.48, 0.010), agedWalnutMat);
-  wainscot.position.set(0, 0.13, -depth / 2 + 0.022);
-  shelfGroup.add(wainscot);
-
-  const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.52, 12), agedBrassMat);
-  rail.rotation.z = Math.PI / 2;
-  rail.position.set(0, -0.14, -depth / 2 + 0.036);
-  shelfGroup.add(rail);
-
-  const lowerCenterDiv = new THREE.Mesh(new THREE.BoxGeometry(0.026, -0.18 - boardT / 2 - interiorBot, shelfDepth), agedWalnutMat);
-  lowerCenterDiv.position.set(0, (interiorBot + (-0.18 - boardT / 2)) / 2, shelfZ);
-  shelfGroup.add(lowerCenterDiv);
-
-  const rightSubDiv = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.34 - boardT, shelfDepth), agedWalnutMat);
-  rightSubDiv.position.set(rightBayCenterX - 0.075, -0.03, shelfZ);
-  shelfGroup.add(rightSubDiv);
-
-  scene.add(shelfGroup);
-
-  const exporter = new GLTFExporter();
-  const outputDir = path.join(__dirname, '..', 'public', 'models');
-  const savedDir = path.join(__dirname, '..', 'saved_models', 'bookshelf');
-  fs.mkdirSync(outputDir, { recursive: true });
-  fs.mkdirSync(savedDir, { recursive: true });
-
-  const glbBuffer = await exporter.parseAsync(scene, { binary: true });
-  fs.writeFileSync(path.join(outputDir, 'bookshelf_wood_architectural.glb'), Buffer.from(glbBuffer));
-  fs.writeFileSync(path.join(savedDir, 'bookshelf_wood_architectural.glb'), Buffer.from(glbBuffer));
-
-  const gltfJson = await exporter.parseAsync(scene, { binary: false });
-  fs.writeFileSync(path.join(outputDir, 'bookshelf_wood_architectural.gltf'), JSON.stringify(gltfJson, null, 2));
-  fs.writeFileSync(path.join(savedDir, 'bookshelf_wood_architectural.gltf'), JSON.stringify(gltfJson, null, 2));
-
-  console.log('✅ Wall-Mounted Classic Aged Wood Bookshelf GLB & GLTF exported successfully!');
+  scene.add(root);
+  await exportSceneModels(scene, 'bookshelf_minimal_white', 'bookshelf');
 }
 
-generateWoodenWallBookshelf().catch(console.error);
+generateModernWhiteBookshelf().catch(console.error);

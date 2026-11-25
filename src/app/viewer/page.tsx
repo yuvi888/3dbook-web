@@ -12,7 +12,7 @@ import { RealisticSmallFlowerPot3D } from '@/components/3d/RealisticSmallFlowerP
 import { RealisticTallBananaPlant3D } from '@/components/3d/RealisticTallBananaPlant3D';
 import { RealisticTallFiddleFig3D } from '@/components/3d/RealisticTallFiddleFig3D';
 import { RealisticLamp3D } from '@/components/3d/RealisticLamp3D';
-import { RealisticWoodenBookshelf3D } from '@/components/3d/RealisticWoodenBookshelf3D';
+import { RealisticModernWhiteBookshelf3D } from '@/components/3d/RealisticModernWhiteBookshelf3D';
 import { RealisticGlassWindow3D } from '@/components/3d/RealisticGlassWindow3D';
 
 useGLTF.preload('/models/advanced_book_realistic.glb');
@@ -116,7 +116,16 @@ function BookViewerModel({
   );
 }
 
-type ModelKey = 'plant' | 'flower' | 'banana' | 'fig' | 'window' | 'bookshelf' | 'lamp' | 'book';
+type ModelKey =
+  | 'plant'
+  | 'flower'
+  | 'banana'
+  | 'fig'
+  | 'window_left'
+  | 'window_right'
+  | 'bookshelf'
+  | 'lamp'
+  | 'book';
 
 export default function ModelViewerPage() {
   const [selectedModel, setSelectedModel] = useState<ModelKey>('book');
@@ -213,11 +222,11 @@ export default function ModelViewerPage() {
       isBotanical: true,
       hint: 'Drag 360° • Sized (~1.68m) for corridor display • Fissured Ficus bark & fluted limestone pot',
     },
-    window: {
-      name: 'Architectural Glass Casement Window with Outdoor Sky & Grass',
+    window_left: {
+      name: 'Left Wall Glass Casement Window (Updated Sky & Grass)',
       fileName: 'window_glass_outdoor_realistic.glb',
       fileSize: 'Peak Architectural Glazing PBR',
-      subTitle: 'Double-Glazed Reflective Glass • White Timber Casing & Brass Latches • Real Sky & Grass View Outside',
+      subTitle: 'Double-Glazed Reflective Glass • White Timber Frame • Fresh Outdoor Sky & Lawn View',
       cameraPos: [0, 0.04, 3.25] as [number, number, number],
       cameraFov: 40,
       shadowPos: [0, -0.92, 0] as [number, number, number],
@@ -227,23 +236,39 @@ export default function ModelViewerPage() {
       maxDistance: 6.0,
       target: [0, 0.0, 0] as [number, number, number],
       isBotanical: false,
-      hint: 'Drag to look through crystal glass panes onto sunlit outdoor grass lawn & blue sky • Orbit around frame & hardware',
+      hint: 'Left wall window • Look through reflective glass onto freshly generated outdoor sky, sunlit trees & green grass',
+    },
+    window_right: {
+      name: 'Right Wall Glass Casement Window (Sea & Clouds View)',
+      fileName: 'window_glass_sea_realistic.glb',
+      fileSize: 'Peak Architectural Glazing PBR',
+      subTitle: 'Double-Glazed Reflective Glass • White Timber Frame • Ocean Sea & Clouds Outside',
+      cameraPos: [0, 0.04, 3.25] as [number, number, number],
+      cameraFov: 40,
+      shadowPos: [0, -0.92, 0] as [number, number, number],
+      shadowScale: 3.0,
+      shadowOpacity: 0.45,
+      minDistance: 0.8,
+      maxDistance: 6.0,
+      target: [0, 0.0, 0] as [number, number, number],
+      isBotanical: false,
+      hint: 'Right wall window • Look through crystal glass onto sunlit open sea ocean waves & cumulus clouds',
     },
     bookshelf: {
-      name: 'Wall-Mounted Aged Walnut Architectural Bookcase',
-      fileName: 'bookshelf_wood_architectural.glb',
-      fileSize: 'Peak Classic Woodwork PBR',
-      subTitle: 'Aged Walnut Grain • Carved Corbels & Arched Gallery Niche • Rear French Cleat Mount',
-      cameraPos: [0, 0.14, 2.75] as [number, number, number],
+      name: 'Modern White Illuminated Wall Bookshelf',
+      fileName: 'bookshelf_minimal_white.glb',
+      fileSize: 'Empty Luxury Fluted & LED Built-In',
+      subTitle: 'Rounded Portal & Champagne Trim • Knife-Edge White Shelves • Fluted Off-White Back • Bright LEDs',
+      cameraPos: [0, 0.06, 2.85] as [number, number, number],
       cameraFov: 40,
-      shadowPos: [0, -0.82, 0] as [number, number, number],
+      shadowPos: [0, -0.76, 0] as [number, number, number],
       shadowScale: 3.4,
       shadowOpacity: 0.45,
-      minDistance: 1.2,
+      minDistance: 1.0,
       maxDistance: 6.0,
-      target: [0, 0.08, 0] as [number, number, number],
+      target: [0, 0.02, 0] as [number, number, number],
       isBotanical: false,
-      hint: 'Drag 360° (including underneath corbels & rear French-cleat mounts) • Wall-mounted aged walnut architectural bookcase',
+      hint: 'Modern white wall-mounted shelf kept 100% empty • Fluted off-white back panel, champagne inlay & brighter warm compartment LEDs',
     },
     lamp: {
       name: 'Fluted Travertine & Linen Table Lamp',
@@ -299,19 +324,19 @@ export default function ModelViewerPage() {
                 ACTIVE
               </span>
             </div>
-            <p className="text-[11px] text-amber-400 font-mono truncate max-w-[230px] xl:max-w-[270px]">
+            <p className="text-[11px] text-amber-400 font-mono truncate max-w-[180px] xl:max-w-[220px]">
               {modelInfo.fileName} ({modelInfo.subTitle})
             </p>
           </div>
         </div>
 
         {/* Model Switcher Tabs & Live Controls */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           {/* Model Switcher */}
           <div className="flex items-center bg-neutral-900/90 p-1 rounded-full border border-white/15">
             <button
               onClick={() => setSelectedModel('plant')}
-              className={`px-2 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer ${
+              className={`px-2 py-1 rounded-full text-[10.5px] font-semibold whitespace-nowrap transition-all cursor-pointer ${
                 selectedModel === 'plant'
                   ? 'bg-emerald-600 text-white shadow-md font-bold'
                   : 'text-neutral-400 hover:text-white'
@@ -321,17 +346,17 @@ export default function ModelViewerPage() {
             </button>
             <button
               onClick={() => setSelectedModel('flower')}
-              className={`px-2 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer ${
+              className={`px-2 py-1 rounded-full text-[10.5px] font-semibold whitespace-nowrap transition-all cursor-pointer ${
                 selectedModel === 'flower'
                   ? 'bg-emerald-600 text-white shadow-md font-bold'
                   : 'text-neutral-400 hover:text-white'
               }`}
             >
-              🌸 Flower Pot
+              🌸 Flower
             </button>
             <button
               onClick={() => setSelectedModel('banana')}
-              className={`px-2 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer ${
+              className={`px-2 py-1 rounded-full text-[10.5px] font-semibold whitespace-nowrap transition-all cursor-pointer ${
                 selectedModel === 'banana'
                   ? 'bg-emerald-600 text-white shadow-md font-bold'
                   : 'text-neutral-400 hover:text-white'
@@ -341,7 +366,7 @@ export default function ModelViewerPage() {
             </button>
             <button
               onClick={() => setSelectedModel('fig')}
-              className={`px-2 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer ${
+              className={`px-2 py-1 rounded-full text-[10.5px] font-semibold whitespace-nowrap transition-all cursor-pointer ${
                 selectedModel === 'fig'
                   ? 'bg-emerald-600 text-white shadow-md font-bold'
                   : 'text-neutral-400 hover:text-white'
@@ -350,28 +375,38 @@ export default function ModelViewerPage() {
               🌳 Fiddle Fig
             </button>
             <button
-              onClick={() => setSelectedModel('window')}
-              className={`px-2 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer ${
-                selectedModel === 'window'
+              onClick={() => setSelectedModel('window_left')}
+              className={`px-2 py-1 rounded-full text-[10.5px] font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                selectedModel === 'window_left'
                   ? 'bg-sky-600 text-white shadow-md font-bold'
                   : 'text-neutral-400 hover:text-white'
               }`}
             >
-              🪟 Window
+              🪟 L Window
+            </button>
+            <button
+              onClick={() => setSelectedModel('window_right')}
+              className={`px-2 py-1 rounded-full text-[10.5px] font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                selectedModel === 'window_right'
+                  ? 'bg-cyan-600 text-white shadow-md font-bold'
+                  : 'text-neutral-400 hover:text-white'
+              }`}
+            >
+              🌊 R Window
             </button>
             <button
               onClick={() => setSelectedModel('bookshelf')}
-              className={`px-2 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer ${
+              className={`px-2 py-1 rounded-full text-[10.5px] font-semibold whitespace-nowrap transition-all cursor-pointer ${
                 selectedModel === 'bookshelf'
                   ? 'bg-amber-600 text-white shadow-md font-bold'
                   : 'text-neutral-400 hover:text-white'
               }`}
             >
-              📚 Bookshelf
+              📚 Shelf
             </button>
             <button
               onClick={() => setSelectedModel('lamp')}
-              className={`px-2 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer ${
+              className={`px-2 py-1 rounded-full text-[10.5px] font-semibold whitespace-nowrap transition-all cursor-pointer ${
                 selectedModel === 'lamp'
                   ? 'bg-amber-500 text-neutral-950 shadow-md font-bold'
                   : 'text-neutral-400 hover:text-white'
@@ -381,7 +416,7 @@ export default function ModelViewerPage() {
             </button>
             <button
               onClick={() => setSelectedModel('book')}
-              className={`px-2 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer ${
+              className={`px-2 py-1 rounded-full text-[10.5px] font-semibold whitespace-nowrap transition-all cursor-pointer ${
                 selectedModel === 'book'
                   ? 'bg-amber-600 text-white shadow-md font-bold'
                   : 'text-neutral-400 hover:text-white'
@@ -392,10 +427,9 @@ export default function ModelViewerPage() {
           </div>
 
           {selectedModel === 'bookshelf' && (
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-neutral-900 border border-white/10 text-xs">
-              <span className="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]"></span>
-              <span className="text-neutral-400">Mount:</span>
-              <span className="text-amber-300 font-mono font-semibold">Wall French-Cleat</span>
+            <div className="hidden 2xl:flex items-center gap-2 px-3 py-1.5 rounded-full bg-neutral-900 border border-white/10 text-xs">
+              <span className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.6)]"></span>
+              <span className="text-neutral-300 font-mono font-semibold">Modern LED Wall-Mount</span>
             </div>
           )}
 
@@ -530,25 +564,25 @@ export default function ModelViewerPage() {
           gl={{ antialias: true }}
           style={{ width: '100%', height: '100%' }}
         >
-          {/* Studio Lighting (360-degree wrap with warm museum fill for wood & rim separation) */}
+          {/* Studio Lighting (balanced contrast so white sculptural bookshelf & warm LEDs shine) */}
           <ambientLight
-            intensity={selectedModel === 'bookshelf' ? 1.35 : modelInfo.isBotanical ? 1.05 : 1.0}
+            intensity={selectedModel === 'bookshelf' ? 0.92 : modelInfo.isBotanical ? 1.05 : 1.0}
             color="#fffcf7"
           />
           <directionalLight
             position={[2.0, 3.5, 2.5]}
-            intensity={modelInfo.isBotanical ? 1.5 : selectedModel === 'bookshelf' ? 1.05 : 0.75}
+            intensity={modelInfo.isBotanical ? 1.5 : selectedModel === 'bookshelf' ? 0.85 : 0.75}
             color="#fffdf5"
             castShadow
           />
           <directionalLight
             position={[-2.5, 2.0, 1.0]}
-            intensity={modelInfo.isBotanical ? 0.75 : selectedModel === 'bookshelf' ? 0.85 : 0.65}
+            intensity={modelInfo.isBotanical ? 0.75 : selectedModel === 'bookshelf' ? 0.65 : 0.65}
             color="#f4f8ff"
           />
           <directionalLight
             position={[-1.5, 2.5, -2.5]}
-            intensity={selectedModel === 'book' || selectedModel === 'bookshelf' ? 0.85 : 0.45}
+            intensity={selectedModel === 'book' || selectedModel === 'bookshelf' ? 0.72 : 0.45}
             color="#fff7e8"
           />
           <directionalLight
@@ -566,10 +600,12 @@ export default function ModelViewerPage() {
               <RealisticTallBananaPlant3D autoRotate={autoRotate} />
             ) : selectedModel === 'fig' ? (
               <RealisticTallFiddleFig3D autoRotate={autoRotate} />
-            ) : selectedModel === 'window' ? (
-              <RealisticGlassWindow3D autoRotate={autoRotate} />
+            ) : selectedModel === 'window_left' ? (
+              <RealisticGlassWindow3D key="win-left" autoRotate={autoRotate} variant="left" />
+            ) : selectedModel === 'window_right' ? (
+              <RealisticGlassWindow3D key="win-right" autoRotate={autoRotate} variant="right" />
             ) : selectedModel === 'bookshelf' ? (
-              <RealisticWoodenBookshelf3D autoRotate={autoRotate} />
+              <RealisticModernWhiteBookshelf3D autoRotate={autoRotate} />
             ) : selectedModel === 'lamp' ? (
               <RealisticLamp3D
                 autoRotate={autoRotate}

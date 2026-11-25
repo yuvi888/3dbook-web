@@ -12,9 +12,12 @@ function buildCurvedVistaGeometry(width, height, curveDepth = 0.08) {
   return geo;
 }
 
-async function generateGlassWindow() {
+async function buildWindowModel(variant) {
   const scene = new THREE.Scene();
-  scene.name = 'Architectural_Glass_Window_With_Outdoor_Vista';
+  scene.name =
+    variant === 'right'
+      ? 'Architectural_Glass_Window_Right_Sea_Clouds'
+      : 'Architectural_Glass_Window_Left_Sky_Grass';
 
   const winW = 1.24;
   const winH = 1.62;
@@ -29,7 +32,6 @@ async function generateGlassWindow() {
   const upperCenterY = (innerH / 2 + transomY) / 2;
 
   const timberMat = new THREE.MeshStandardMaterial({ color: '#f2eee6', roughness: 0.42, metalness: 0.02 });
-  const gasketMat = new THREE.MeshStandardMaterial({ color: '#222428', roughness: 0.72, metalness: 0.15 });
   const brassMat = new THREE.MeshStandardMaterial({ color: '#c89f4e', roughness: 0.24, metalness: 0.88 });
   const sillMat = new THREE.MeshStandardMaterial({ color: '#e6dfd3', roughness: 0.56, metalness: 0.02 });
   const glassMat = new THREE.MeshPhysicalMaterial({
@@ -41,7 +43,10 @@ async function generateGlassWindow() {
     ior: 1.52,
     side: THREE.DoubleSide,
   });
-  const vistaMat = new THREE.MeshStandardMaterial({ color: '#78b4d8', roughness: 0.85 });
+  const vistaMat = new THREE.MeshStandardMaterial({
+    color: variant === 'right' ? '#2c88a8' : '#78b4d8',
+    roughness: 0.85,
+  });
 
   const root = new THREE.Group();
 
@@ -114,7 +119,16 @@ async function generateGlassWindow() {
   });
 
   scene.add(root);
-  await exportSceneModels(scene, 'window_glass_outdoor_realistic', 'glass_window');
+  if (variant === 'right') {
+    await exportSceneModels(scene, 'window_glass_sea_realistic', 'glass_window_sea');
+  } else {
+    await exportSceneModels(scene, 'window_glass_outdoor_realistic', 'glass_window');
+  }
 }
 
-generateGlassWindow().catch(console.error);
+async function generateGlassWindows() {
+  await buildWindowModel('left');
+  await buildWindowModel('right');
+}
+
+generateGlassWindows().catch(console.error);
