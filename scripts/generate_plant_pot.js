@@ -21,397 +21,379 @@ global.FileReader = class FileReader {
   }
 };
 
+function buildBotanicalLeafGeometry(width, length, droopAmount, seed) {
+  const uSegs = 16;
+  const vSegs = 22;
+  const verts = [];
+  const uvs = [];
+  const indices = [];
+
+  for (let iv = 0; iv <= vSegs; iv++) {
+    const v = iv / vSegs;
+    const profile = v === 0 ? 0.004 : Math.pow(Math.sin(Math.pow(v, 0.56) * Math.PI), 0.70);
+    for (let iu = 0; iu <= uSegs; iu++) {
+      const u = (iu / uSegs) * 2 - 1;
+      const absU = Math.abs(u);
+      const x = u * (width * 0.5) * profile;
+      const lobeDip = -length * 0.14 * Math.exp(-v * 6.5) * Math.sin(absU * Math.PI * 0.88);
+      const y = v * length + lobeDip;
+
+      const midribGroove = -width * 0.028 * Math.exp(-Math.pow(u / 0.14, 2)) * (1 - v * 0.7);
+      const cup = Math.sin(v * Math.PI) * Math.pow(absU, 1.35) * (width * 0.16);
+      const droop = -Math.pow(v, 1.55) * (length * droopAmount);
+      const tipCurl = v > 0.75 ? -Math.pow((v - 0.75) / 0.25, 2) * (length * 0.06) : 0;
+      const waveFreq = 2.6 + (seed % 3) * 0.5;
+      const marginWave = Math.sin(v * Math.PI * waveFreq + seed * 2.1) * Math.pow(absU, 1.45) * (width * 0.045);
+
+      verts.push(x, y, midribGroove + cup + droop + tipCurl + marginWave);
+      uvs.push(u * 0.5 + 0.5, v);
+    }
+  }
+
+  for (let iv = 0; iv < vSegs; iv++) {
+    for (let iu = 0; iu < uSegs; iu++) {
+      const a = iv * (uSegs + 1) + iu;
+      const b = a + 1;
+      const c = a + (uSegs + 1);
+      const d = c + 1;
+      indices.push(a, b, c, b, d, c);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function buildTaperedStemGeometry(points, tubularSegs, radiusStart, radiusEnd, radialSegs = 7) {
+  const curve = new THREE.CatmullRomCurve3(points);
+  const frames = curve.computeFrenetFrames(tubularSegs, false);
+  const verts = [];
+  const normals = [];
+  const uvs = [];
+  const indices = [];
+
+  for (let i = 0; i <= tubularSegs; i++) {
+    const t = i / tubularSegs;
+    const p = curve.getPointAt(t);
+    const N = frames.normals[i];
+    const B = frames.binormals[i];
+    const r = radiusStart + (radiusEnd - radiusStart) * t;
+
+    for (let j = 0; j <= radialSegs; j++) {
+      const v = (j / radialSegs) * Math.PI * 2;
+      const sin = Math.sin(v);
+      const cos = -Math.cos(v);
+      const nx = cos * N.x + sin * B.x;
+      const ny = cos * N.y + sin * B.y;
+      const nz = cos * N.z + sin * B.z;
+
+      verts.push(p.x + r * nx, p.y + r * ny, p.z + r * nz);
+      normals.push(nx, ny, nz);
+      uvs.push(j / radialSegs, t);
+    }
+  }
+
+  for (let i = 0; i < tubularSegs; i++) {
+    for (let j = 0; j < radialSegs; j++) {
+      const a = i * (radialSegs + 1) + j;
+      const b = (i + 1) * (radialSegs + 1) + j;
+      const c = (i + 1) * (radialSegs + 1) + (j + 1);
+      const d = i * (radialSegs + 1) + (j + 1);
+      indices.push(a, b, d, b, c, d);
+    }
+  }
+
+  const tipCenter = curve.getPointAt(1);
+  const tipTangent = curve.getTangentAt(1);
+  const tipApex = tipCenter.clone().add(tipTangent.multiplyScalar(radiusEnd * 1.6));
+  const tipIdx = verts.length / 3;
+  verts.push(tipApex.x, tipApex.y, tipApex.z);
+  normals.push(tipTangent.x, tipTangent.y, tipTangent.z);
+  uvs.push(0.5, 1);
+
+  const lastRingStart = tubularSegs * (radialSegs + 1);
+  for (let j = 0; j < radialSegs; j++) {
+    indices.push(lastRingStart + j, tipIdx, lastRingStart + j + 1);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  return geo;
+}
+
 async function generatePhotorealisticPlantPot() {
-  console.log('Generating Photorealistic Trailing Pothos Plant Pot 3D Model...');
+  console.log('Generating Peak-Detail Sculpted Botanical Pothos Plant Pot 3D Model...');
 
   const scene = new THREE.Scene();
-  scene.name = 'Photorealistic_Botanical_Pothos_Planter';
+  scene.name = 'Peak_Detail_Botanical_Pothos_Planter';
 
-  // =========================================================================
-  // 1. PBR MATERIALS
-  // =========================================================================
-  // Modern Minimalist White Porcelain Ceramic (matching reference photo)
   const ceramicPotMat = new THREE.MeshStandardMaterial({
-    name: 'Minimalist_White_Ceramic',
-    color: new THREE.Color('#faf8f5'),
-    roughness: 0.32,
+    name: 'Glazed_Stoneware_Ceramic',
+    color: new THREE.Color('#f7f4eb'),
+    roughness: 0.25,
     metalness: 0.02,
   });
 
-  // Dark Organic Peat Soil (rich, deep, matte)
-  const soilMat = new THREE.MeshStandardMaterial({
-    name: 'Organic_Potting_Soil',
-    color: new THREE.Color('#1c140e'),
-    roughness: 0.95,
-    metalness: 0.0,
+  const ceramicInnerMat = new THREE.MeshStandardMaterial({
+    name: 'Stoneware_Inner_Wall',
+    color: new THREE.Color('#ebe5d8'),
+    roughness: 0.42,
   });
 
-  // Slender Botanical Vine & Petiole Stems (natural olive/sap green)
+  const soilMat = new THREE.MeshStandardMaterial({
+    name: 'Organic_Potting_Mix',
+    color: new THREE.Color('#3b281c'),
+    roughness: 0.94,
+  });
+
   const stemMat = new THREE.MeshStandardMaterial({
     name: 'Botanical_Vine_Stem',
-    color: new THREE.Color('#517e3e'),
+    color: new THREE.Color('#467632'),
     roughness: 0.42,
-    metalness: 0.0,
   });
 
-  // Raised Central Leaf Midrib Vein
-  const veinMat = new THREE.MeshStandardMaterial({
-    name: 'Leaf_Midrib_Vein',
-    color: new THREE.Color('#5c8f47'),
-    roughness: 0.40,
-    metalness: 0.0,
-  });
+  const leafMats = {
+    deepEmerald: new THREE.MeshStandardMaterial({
+      name: 'Pothos_Deep_Emerald',
+      color: new THREE.Color('#215c26'),
+      roughness: 0.28,
+      metalness: 0.02,
+      side: THREE.DoubleSide,
+    }),
+    variegatedGold: new THREE.MeshStandardMaterial({
+      name: 'Pothos_Variegated_Gold',
+      color: new THREE.Color('#387735'),
+      roughness: 0.28,
+      metalness: 0.02,
+      side: THREE.DoubleSide,
+    }),
+    matureOlive: new THREE.MeshStandardMaterial({
+      name: 'Pothos_Mature_Olive',
+      color: new THREE.Color('#264f27'),
+      roughness: 0.30,
+      metalness: 0.02,
+      side: THREE.DoubleSide,
+    }),
+    youngShoot: new THREE.MeshStandardMaterial({
+      name: 'Pothos_Young_Shoot',
+      color: new THREE.Color('#5ca13c'),
+      roughness: 0.32,
+      metalness: 0.01,
+      side: THREE.DoubleSide,
+    }),
+  };
 
-  // Mature Botanical Leaf Blade (Rich satin emerald green, waxy sheen)
-  const matureLeafMat = new THREE.MeshStandardMaterial({
-    name: 'Pothos_Mature_Leaf',
-    color: new THREE.Color('#275c2b'),
-    roughness: 0.28,
-    metalness: 0.02,
-    side: THREE.DoubleSide,
-  });
-
-  // Mid-Canopy Leaf Blade (Lush botanical green)
-  const midLeafMat = new THREE.MeshStandardMaterial({
-    name: 'Pothos_Mid_Leaf',
-    color: new THREE.Color('#336e35'),
-    roughness: 0.30,
-    metalness: 0.02,
-    side: THREE.DoubleSide,
-  });
-
-  // Fresh Sprouting / Vine Tip Leaf Blade (Vibrant tender sap green)
-  const youngLeafMat = new THREE.MeshStandardMaterial({
-    name: 'Pothos_Young_Leaf',
-    color: new THREE.Color('#499443'),
-    roughness: 0.34,
-    metalness: 0.01,
-    side: THREE.DoubleSide,
-  });
-
-  // Root Planter Group
   const plantPotGroup = new THREE.Group();
   plantPotGroup.name = 'Realistic_Plant_Pot_Assembly';
 
-  // =========================================================================
-  // 2. MINIMALIST CERAMIC CYLINDER POT (Matching reference photo)
-  // =========================================================================
-  const potRadius = 0.068; // 13.6 cm diameter
-  const potHeight = 0.125; // 12.5 cm tall
+  const potRadius = 0.068;
+  const potHeight = 0.125;
+  const soilY = potHeight - 0.015;
+  const baseR = potRadius * 0.93;
+  const wall = 0.0052;
 
-  // Main Pot Cylinder Body
-  const potBodyGeo = new THREE.CylinderGeometry(potRadius, potRadius * 0.94, potHeight, 48, 1, true);
-  const potBody = new THREE.Mesh(potBodyGeo, ceramicPotMat);
-  potBody.name = 'Ceramic_Pot_Body';
-  potBody.position.set(0, potHeight / 2, 0);
-  potBody.castShadow = true;
-  potBody.receiveShadow = true;
-  plantPotGroup.add(potBody);
+  // 1. 72-Segment Lathe Stoneware Pot
+  const outerPts = [
+    new THREE.Vector2(0.0, 0.003),
+    new THREE.Vector2(baseR - 0.008, 0.003),
+    new THREE.Vector2(baseR - 0.006, 0.0),
+    new THREE.Vector2(baseR - 0.001, 0.0),
+    new THREE.Vector2(baseR, 0.004),
+    new THREE.Vector2(potRadius - 0.002, potHeight - 0.005),
+    new THREE.Vector2(potRadius, potHeight - 0.002),
+    new THREE.Vector2(potRadius - 0.0005, potHeight + 0.0025),
+    new THREE.Vector2(potRadius - wall * 0.5, potHeight + 0.0038),
+    new THREE.Vector2(potRadius - wall, potHeight + 0.0015),
+  ];
+  const outerPot = new THREE.Mesh(new THREE.LatheGeometry(outerPts, 72).rotateY(Math.PI), ceramicPotMat);
+  outerPot.name = 'Glazed_Stoneware_Pot';
+  outerPot.castShadow = true;
+  outerPot.receiveShadow = true;
+  plantPotGroup.add(outerPot);
 
-  // Soft Rounded Rim Lip at the top of the pot
-  const rimGeo = new THREE.TorusGeometry(potRadius - 0.002, 0.004, 16, 48);
-  rimGeo.rotateX(Math.PI / 2);
-  const rim = new THREE.Mesh(rimGeo, ceramicPotMat);
-  rim.name = 'Ceramic_Pot_Rim';
-  rim.position.set(0, potHeight, 0);
-  plantPotGroup.add(rim);
+  const innerPts = [
+    new THREE.Vector2(potRadius - wall, potHeight + 0.0015),
+    new THREE.Vector2(potRadius - wall - 0.001, soilY - 0.025),
+  ];
+  const innerPot = new THREE.Mesh(new THREE.LatheGeometry(innerPts, 64).rotateY(Math.PI), ceramicInnerMat);
+  innerPot.name = 'Pot_Inner_Wall';
+  plantPotGroup.add(innerPot);
 
-  // Soft Rounded Bottom Bevel
-  const bottomBevelGeo = new THREE.TorusGeometry(potRadius * 0.94 - 0.002, 0.0035, 14, 48);
-  bottomBevelGeo.rotateX(Math.PI / 2);
-  const bottomBevel = new THREE.Mesh(bottomBevelGeo, ceramicPotMat);
-  bottomBevel.name = 'Ceramic_Pot_Bottom_Bevel';
-  bottomBevel.position.set(0, 0.0035, 0);
-  plantPotGroup.add(bottomBevel);
-
-  // =========================================================================
-  // 3. ORGANIC POTTING SOIL (Mounded surface recessed below rim)
-  // =========================================================================
-  const soilY = potHeight - 0.012; // 1.2 cm below rim
-  const soilRadius = potRadius - 0.006;
-  const soilGeo = new THREE.CylinderGeometry(soilRadius, soilRadius - 0.006, 0.016, 36);
-  const soil = new THREE.Mesh(soilGeo, soilMat);
-  soil.name = 'Organic_Potting_Soil';
-  soil.position.set(0, soilY, 0);
-  soil.receiveShadow = true;
-  plantPotGroup.add(soil);
-
-  // =========================================================================
-  // 4. PARAMETRIC CURVED BOTANICAL LEAF GENERATOR
-  // Creates smooth heart/oval leaf blades with 3D cupping, droop, and central vein
-  // =========================================================================
-  function createLeafMesh(length, width, cupAmount, droopAmount, material) {
-    const leafGroup = new THREE.Group();
-
-    // 1. Organic Bezier Contour Shape
-    const shape = new THREE.Shape();
-    shape.moveTo(0, 0);
-    // Left heart/oval curve
-    shape.bezierCurveTo(-width * 0.45, length * 0.15, -width * 0.55, length * 0.55, -width * 0.35, length * 0.85);
-    shape.bezierCurveTo(-width * 0.18, length * 0.96, -width * 0.04, length * 0.99, 0, length);
-    // Right heart/oval curve (symmetric)
-    shape.bezierCurveTo(width * 0.04, length * 0.99, width * 0.18, length * 0.96, width * 0.35, length * 0.85);
-    shape.bezierCurveTo(width * 0.55, length * 0.55, width * 0.45, length * 0.15, 0, 0);
-
-    const geo = new THREE.ShapeGeometry(shape, 18);
-    const pos = geo.attributes.position;
-
-    // Displace vertices into 3D natural leaf curvature
-    for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i);
-      const y = pos.getY(i);
-      const normY = y / length;
-      const distFromSpine = Math.abs(x) / (width / 2);
-
-      // Cupping: leaf wings curve upwards away from spine
-      const cupZ = Math.pow(distFromSpine, 1.3) * (width * cupAmount);
-
-      // Droop: natural gravity curve along leaf length
-      const droopZ = -Math.sin(normY * Math.PI * 0.78) * (length * droopAmount);
-
-      pos.setZ(i, cupZ + droopZ);
+  // 2. 3D Mounded Soil + River Pebbles
+  const soilGeo = new THREE.PlaneGeometry((potRadius - wall) * 2.02, (potRadius - wall) * 2.02, 28, 28);
+  soilGeo.rotateX(-Math.PI / 2);
+  const sPos = soilGeo.attributes.position;
+  const maxR = potRadius - wall + 0.0008;
+  for (let i = 0; i < sPos.count; i++) {
+    let x = sPos.getX(i);
+    let z = sPos.getZ(i);
+    const r = Math.sqrt(x * x + z * z);
+    if (r > maxR) {
+      x *= maxR / r;
+      z *= maxR / r;
     }
-    geo.computeVertexNormals();
-
-    const bladeMesh = new THREE.Mesh(geo, material);
-    bladeMesh.castShadow = true;
-    leafGroup.add(bladeMesh);
-
-    // 2. Raised 3D Central Midrib Vein
-    const veinCurve = new THREE.LineCurve3(
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0, length * 0.95, -length * droopAmount * 0.7)
-    );
-    const veinGeo = new THREE.TubeGeometry(veinCurve, 10, 0.0009, 6, false);
-    const veinMesh = new THREE.Mesh(veinGeo, veinMat);
-    leafGroup.add(veinMesh);
-
-    return leafGroup;
+    const normR = Math.min(1, r / maxR);
+    const dome = (1 - normR * normR) * 0.007;
+    const bump = 0.002 * Math.sin(x * 85) * Math.cos(z * 85);
+    sPos.setXYZ(i, x, dome + bump * (1 - normR * 0.6), z);
   }
+  soilGeo.computeVertexNormals();
+  const soilMesh = new THREE.Mesh(soilGeo, soilMat);
+  soilMesh.position.set(0, soilY, 0);
+  soilMesh.receiveShadow = true;
+  soilMesh.name = 'Mounded_Potting_Soil';
+  plantPotGroup.add(soilMesh);
 
-  // =========================================================================
-  // 5. NATURAL CROWN FOLIAGE (38 Bulk Leaves forming a dense, bushy dome)
-  // =========================================================================
+  const pebbles = [
+    [-0.032, soilY + 0.001, 0.025, 0.0085, '#787066'],
+    [0.028, soilY + 0.001, -0.026, 0.0072, '#948674'],
+    [-0.012, soilY + 0.002, -0.035, 0.0090, '#58534d'],
+    [0.036, soilY + 0.001, 0.018, 0.0068, '#847b70'],
+    [-0.036, soilY + 0.001, -0.016, 0.0075, '#6b645c'],
+    [0.014, soilY + 0.002, 0.038, 0.0078, '#9c8e7c'],
+  ];
+  pebbles.forEach(([x, y, z, s, col], i) => {
+    const pGeo = new THREE.IcosahedronGeometry(s, 2);
+    pGeo.scale(1, 0.56, 0.82);
+    const pMesh = new THREE.Mesh(pGeo, new THREE.MeshStandardMaterial({ color: col, roughness: 0.68 }));
+    pMesh.position.set(x, y, z);
+    pMesh.name = `River_Pebble_${i + 1}`;
+    plantPotGroup.add(pMesh);
+  });
+
+  // 3. Crown Foliage & Trailing Vines
+  const rootClusters = [
+    new THREE.Vector3(-0.013, soilY - 0.003, 0.010),
+    new THREE.Vector3(0.015, soilY - 0.003, -0.008),
+    new THREE.Vector3(-0.004, soilY - 0.003, -0.015),
+  ];
+
   const foliageGroup = new THREE.Group();
   foliageGroup.name = 'Foliage_Assembly';
 
-  // --- Tier 1: Center Sprouting Core (6 leaves) ---
-  for (let i = 0; i < 6; i++) {
-    const angle = (i * Math.PI * 2) / 6 + 0.2;
-    const rRoot = 0.010 + (i % 2) * 0.005;
-    const rBase = 0.018 + (i % 3) * 0.005;
-    const yBase = soilY + 0.032 + (i % 3) * 0.006;
-
-    const leafUnit = new THREE.Group();
-    leafUnit.name = `Core_Leaf_${i + 1}`;
-
-    const stemStart = new THREE.Vector3(rRoot * Math.cos(angle), soilY + 0.002, rRoot * Math.sin(angle));
-    const stemEnd = new THREE.Vector3(rBase * Math.cos(angle + 0.15), yBase, rBase * Math.sin(angle + 0.15));
-    const stemMid = new THREE.Vector3(
-      (stemStart.x + stemEnd.x) / 2,
-      Math.max(stemStart.y, stemEnd.y) + 0.004,
-      (stemStart.z + stemEnd.z) / 2
+  function addLeafWithStem(root, base, dir, w, len, droop, roll, seed, mat, arch) {
+    const dirVec = new THREE.Vector3(...dir).normalize();
+    const p1 = new THREE.Vector3(
+      root.x * 0.65 + base.x * 0.35,
+      Math.max(root.y, base.y) + arch * 0.5,
+      root.z * 0.65 + base.z * 0.35
     );
+    const p2 = base.clone().sub(dirVec.clone().multiplyScalar(0.011));
+    const stemMesh = new THREE.Mesh(buildTaperedStemGeometry([root, p1, p2, base], 10, 0.0019, 0.0009, 6), stemMat);
+    stemMesh.castShadow = true;
+    foliageGroup.add(stemMesh);
 
-    const stemCurve = new THREE.CatmullRomCurve3([stemStart, stemMid, stemEnd]);
-    const stemGeo = new THREE.TubeGeometry(stemCurve, 6, 0.0013, 6, false);
-    const stemMesh = new THREE.Mesh(stemGeo, stemMat);
-    leafUnit.add(stemMesh);
-
-    const leafMesh = createLeafMesh(0.060, 0.042, 0.22, 0.18, youngLeafMat);
-    leafMesh.position.copy(stemEnd);
-    leafMesh.rotation.y = -angle - Math.PI / 2;
-    leafMesh.rotation.x = 0.38;
-    leafMesh.rotation.z = ((i % 3) - 1) * 0.12;
-
-    leafUnit.add(leafMesh);
-    foliageGroup.add(leafUnit);
+    const leafMesh = new THREE.Mesh(buildBotanicalLeafGeometry(w, len, droop, seed), mat);
+    leafMesh.position.copy(base);
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dirVec);
+    q.premultiply(new THREE.Quaternion().setFromAxisAngle(dirVec, roll));
+    leafMesh.quaternion.copy(q);
+    leafMesh.castShadow = true;
+    foliageGroup.add(leafMesh);
   }
 
-  // --- Tier 2: Inner Canopy (10 leaves, spreading at 45°) ---
-  for (let i = 0; i < 10; i++) {
-    const angle = (i * Math.PI * 2) / 10 + 0.4;
-    const rRoot = 0.018 + (i % 2) * 0.006;
-    const rBase = 0.036 + (i % 3) * 0.006;
-    const yBase = soilY + 0.026 + (i % 2) * 0.006;
-
-    const leafUnit = new THREE.Group();
-    leafUnit.name = `Inner_Leaf_${i + 1}`;
-
-    const stemStart = new THREE.Vector3(rRoot * Math.cos(angle), soilY + 0.002, rRoot * Math.sin(angle));
-    const stemEnd = new THREE.Vector3(rBase * Math.cos(angle + 0.1), yBase, rBase * Math.sin(angle + 0.1));
-    const stemMid = new THREE.Vector3(
-      (stemStart.x + stemEnd.x) / 2,
-      Math.max(stemStart.y, stemEnd.y) + 0.005,
-      (stemStart.z + stemEnd.z) / 2
-    );
-
-    const stemCurve = new THREE.CatmullRomCurve3([stemStart, stemMid, stemEnd]);
-    const stemGeo = new THREE.TubeGeometry(stemCurve, 6, 0.0014, 6, false);
-    const stemMesh = new THREE.Mesh(stemGeo, stemMat);
-    leafUnit.add(stemMesh);
-
-    const leafMesh = createLeafMesh(0.074, 0.052, 0.24, 0.22, i % 2 === 0 ? midLeafMat : matureLeafMat);
-    leafMesh.position.copy(stemEnd);
-    leafMesh.rotation.y = -angle - Math.PI / 2;
-    leafMesh.rotation.x = 0.68;
-    leafMesh.rotation.z = ((i % 4) - 1.5) * 0.14;
-
-    leafUnit.add(leafMesh);
-    foliageGroup.add(leafUnit);
+  // Tier 1-4 Crown (40 leaves)
+  for (let i = 0; i < 7; i++) {
+    const a = (i * Math.PI * 2) / 7 + 0.25;
+    const rB = 0.016 + (i % 3) * 0.006;
+    const yB = soilY + 0.028 + (i % 3) * 0.005;
+    addLeafWithStem(rootClusters[i % 3], new THREE.Vector3(rB * Math.cos(a), yB, rB * Math.sin(a)), [0.54 * Math.cos(a + 0.14), 0.78 - (i % 2) * 0.06, 0.54 * Math.sin(a + 0.14)], 0.052, 0.068, 0.28, ((i % 3) - 1) * 0.22, 10 + i * 3, leafMats.youngShoot, 0.006);
   }
-
-  // --- Tier 3: Mid-Rim Canopy (12 leaves, concealing opening) ---
+  for (let i = 0; i < 11; i++) {
+    const a = (i * Math.PI * 2) / 11 + 0.48;
+    const rB = 0.032 + (i % 3) * 0.006;
+    const yB = soilY + 0.024 + (i % 3) * 0.005;
+    addLeafWithStem(rootClusters[i % 3], new THREE.Vector3(rB * Math.cos(a), yB, rB * Math.sin(a)), [0.66 * Math.cos(a + 0.08), 0.72, 0.66 * Math.sin(a + 0.08)], 0.066, 0.086, 0.24, ((i % 5) - 2) * 0.14, 40 + i * 5, i % 2 === 0 ? leafMats.variegatedGold : leafMats.deepEmerald, 0.007);
+  }
   for (let i = 0; i < 12; i++) {
-    const angle = (i * Math.PI * 2) / 12 + 0.15;
-    const rRoot = 0.025 + (i % 3) * 0.006;
-    const rBase = 0.054 + (i % 3) * 0.005;
-    const yBase = soilY + 0.020 + (i % 2) * 0.005;
-
-    const leafUnit = new THREE.Group();
-    leafUnit.name = `Mid_Leaf_${i + 1}`;
-
-    const stemStart = new THREE.Vector3(rRoot * Math.cos(angle), soilY + 0.002, rRoot * Math.sin(angle));
-    const stemEnd = new THREE.Vector3(rBase * Math.cos(angle + 0.08), yBase, rBase * Math.sin(angle + 0.08));
-    const stemMid = new THREE.Vector3(
-      (stemStart.x + stemEnd.x) / 2,
-      Math.max(stemStart.y, stemEnd.y) + 0.006,
-      (stemStart.z + stemEnd.z) / 2
-    );
-
-    const stemCurve = new THREE.CatmullRomCurve3([stemStart, stemMid, stemEnd]);
-    const stemGeo = new THREE.TubeGeometry(stemCurve, 6, 0.0014, 6, false);
-    const stemMesh = new THREE.Mesh(stemGeo, stemMat);
-    leafUnit.add(stemMesh);
-
-    const leafMesh = createLeafMesh(0.082, 0.058, 0.25, 0.25, matureLeafMat);
-    leafMesh.position.copy(stemEnd);
-    leafMesh.rotation.y = -angle - Math.PI / 2;
-    leafMesh.rotation.x = 0.95;
-    leafMesh.rotation.z = ((i % 5) - 2) * 0.15;
-
-    leafUnit.add(leafMesh);
-    foliageGroup.add(leafUnit);
+    const a = (i * Math.PI * 2) / 12 + 0.12;
+    const rB = 0.052 + (i % 3) * 0.005;
+    const yB = soilY + 0.019 + (i % 2) * 0.004;
+    addLeafWithStem(rootClusters[i % 3], new THREE.Vector3(rB * Math.cos(a), yB, rB * Math.sin(a)), [0.84 * Math.cos(a + 0.06), 0.44, 0.84 * Math.sin(a + 0.06)], 0.074, 0.094, 0.28, ((i % 4) - 1.5) * 0.16, 80 + i * 7, i % 2 === 0 ? leafMats.deepEmerald : leafMats.matureOlive, 0.008);
   }
-
-  // --- Tier 4: Outer Lip-Softening Canopy (10 leaves draping over rim) ---
   for (let i = 0; i < 10; i++) {
-    const angle = (i * Math.PI * 2) / 10 + 0.3;
-    const rRoot = 0.030 + (i % 2) * 0.006;
-    const rBase = 0.072 + (i % 3) * 0.004;
-    const yBase = soilY + 0.016 + (i % 2) * 0.004;
-
-    const leafUnit = new THREE.Group();
-    leafUnit.name = `Outer_Leaf_${i + 1}`;
-
-    const stemStart = new THREE.Vector3(rRoot * Math.cos(angle), soilY + 0.002, rRoot * Math.sin(angle));
-    const stemEnd = new THREE.Vector3(rBase * Math.cos(angle + 0.05), yBase, rBase * Math.sin(angle + 0.05));
-    const stemMid = new THREE.Vector3(
-      (stemStart.x + stemEnd.x) / 2,
-      Math.max(stemStart.y, stemEnd.y) + 0.008,
-      (stemStart.z + stemEnd.z) / 2
-    );
-
-    const stemCurve = new THREE.CatmullRomCurve3([stemStart, stemMid, stemEnd]);
-    const stemGeo = new THREE.TubeGeometry(stemCurve, 6, 0.0015, 6, false);
-    const stemMesh = new THREE.Mesh(stemGeo, stemMat);
-    leafUnit.add(stemMesh);
-
-    const leafMesh = createLeafMesh(0.086, 0.062, 0.26, 0.28, matureLeafMat);
-    leafMesh.position.copy(stemEnd);
-    leafMesh.rotation.y = -angle - Math.PI / 2;
-    leafMesh.rotation.x = 1.25;
-    leafMesh.rotation.z = ((i % 3) - 1) * 0.18;
-
-    leafUnit.add(leafMesh);
-    foliageGroup.add(leafUnit);
+    const a = (i * Math.PI * 2) / 10 + 0.32;
+    const rB = 0.071 + (i % 3) * 0.003;
+    const yB = soilY + 0.017 + (i % 2) * 0.003;
+    addLeafWithStem(rootClusters[i % 3], new THREE.Vector3(rB * Math.cos(a), yB, rB * Math.sin(a)), [0.92 * Math.cos(a), -0.14, 0.92 * Math.sin(a)], 0.076, 0.096, 0.32, ((i % 3) - 1) * 0.20, 130 + i * 11, leafMats.matureOlive, 0.010);
   }
 
-  // =========================================================================
-  // 6. REALISTIC TRAILING VINES (3 Cascading Runners, Zero Pot Penetration)
-  // =========================================================================
-  function createTrailingVine(phi, len, count, namePrefix) {
-    const vineGroup = new THREE.Group();
-    vineGroup.name = namePrefix;
-
+  // 4 Cascading Vines (cleanly above y=0 floor plane)
+  const vineConfigs = [
+    { phi: 2.15, len: 0.72, count: 5, rootIdx: 0 },
+    { phi: -0.65, len: 0.65, count: 4, rootIdx: 1 },
+    { phi: 1.18, len: 0.58, count: 4, rootIdx: 0 },
+    { phi: 3.65, len: 0.55, count: 4, rootIdx: 2 },
+  ];
+  vineConfigs.forEach((cfg, cIdx) => {
+    const root = rootClusters[cfg.rootIdx];
     const points = [
-      new THREE.Vector3(0.024 * Math.cos(phi - 0.2), soilY + 0.002, 0.024 * Math.sin(phi - 0.2)),
-      new THREE.Vector3(0.048 * Math.cos(phi - 0.08), 0.122, 0.048 * Math.sin(phi - 0.08)),
-      new THREE.Vector3(0.074 * Math.cos(phi), 0.134, 0.074 * Math.sin(phi)), // Crest over rim
-      new THREE.Vector3(0.080 * Math.cos(phi + 0.03), 0.098 * len + (1 - len) * 0.115, 0.080 * Math.sin(phi + 0.03)),
-      new THREE.Vector3(0.084 * Math.cos(phi + 0.06), 0.062 * len + (1 - len) * 0.110, 0.084 * Math.sin(phi + 0.06)),
-      new THREE.Vector3(0.086 * Math.cos(phi + 0.08), 0.026 * len + (1 - len) * 0.105, 0.086 * Math.sin(phi + 0.08)),
-      new THREE.Vector3(0.084 * Math.cos(phi + 0.10), -0.008 * len + (1 - len) * 0.100, 0.084 * Math.sin(phi + 0.10)),
+      root,
+      new THREE.Vector3(0.046 * Math.cos(cfg.phi - 0.08), 0.124, 0.046 * Math.sin(cfg.phi - 0.08)),
+      new THREE.Vector3(0.074 * Math.cos(cfg.phi), 0.135, 0.074 * Math.sin(cfg.phi)),
+      new THREE.Vector3(0.080 * Math.cos(cfg.phi + 0.04), 0.116 - 0.022 * cfg.len, 0.080 * Math.sin(cfg.phi + 0.04)),
+      new THREE.Vector3(0.085 * Math.cos(cfg.phi - 0.02), 0.104 - 0.048 * cfg.len, 0.085 * Math.sin(cfg.phi - 0.02)),
+      new THREE.Vector3(0.087 * Math.cos(cfg.phi + 0.05), 0.092 - 0.068 * cfg.len, 0.087 * Math.sin(cfg.phi + 0.05)),
+      new THREE.Vector3(0.086 * Math.cos(cfg.phi + 0.09), 0.082 - 0.075 * cfg.len, 0.086 * Math.sin(cfg.phi + 0.09)),
     ];
-
     const curve = new THREE.CatmullRomCurve3(points);
-    const vineGeo = new THREE.TubeGeometry(curve, 32, 0.0018, 8, false);
-    const vineMesh = new THREE.Mesh(vineGeo, stemMat);
-    vineMesh.castShadow = true;
-    vineGroup.add(vineMesh);
+    const runnerMesh = new THREE.Mesh(buildTaperedStemGeometry(points, 30, 0.0021, 0.0008, 7), stemMat);
+    runnerMesh.castShadow = true;
+    foliageGroup.add(runnerMesh);
 
-    for (let i = 0; i < count; i++) {
-      const t = 0.28 + (i / (count - 1)) * 0.68;
-      const pOnVine = curve.getPointAt(t);
+    for (let i = 0; i < cfg.count; i++) {
+      const t = 0.30 + (i / cfg.count) * 0.60;
+      const pNode = curve.getPointAt(t);
       const tangent = curve.getTangentAt(t);
-
-      const normal = new THREE.Vector3(pOnVine.x, 0, pOnVine.z).normalize();
+      const normal = new THREE.Vector3(pNode.x, 0, pNode.z).normalize();
+      const sideDir = new THREE.Vector3().crossVectors(tangent, normal).normalize();
       const isLeft = i % 2 === 0;
 
-      const sideDir = new THREE.Vector3().crossVectors(tangent, normal).normalize();
-      const leafPos = pOnVine
-        .clone()
-        .add(normal.clone().multiplyScalar(0.006))
-        .add(sideDir.clone().multiplyScalar(isLeft ? 0.005 : -0.005));
+      const leafBase = pNode.clone().add(tangent.clone().multiplyScalar(0.009)).add(normal.clone().multiplyScalar(0.008)).add(sideDir.clone().multiplyScalar(isLeft ? 0.010 : -0.010));
+      const leafDir = normal.clone().multiplyScalar(0.50 + t * 0.28).add(new THREE.Vector3(0, -0.80 + t * 0.22, 0)).add(sideDir.clone().multiplyScalar(isLeft ? 0.30 : -0.30)).normalize();
+      const pMid = pNode.clone().lerp(leafBase, 0.55).add(normal.clone().multiplyScalar(0.003));
 
-      const leafLen = 0.080 - (i / count) * 0.025;
-      const leafW = 0.058 - (i / count) * 0.018;
-      const leafMat = i === count - 1 ? youngLeafMat : isLeft ? matureLeafMat : midLeafMat;
+      foliageGroup.add(new THREE.Mesh(buildTaperedStemGeometry([pNode, pMid, leafBase], 6, 0.0013, 0.0008, 5), stemMat));
 
-      const leafMesh = createLeafMesh(leafLen, leafW, 0.24, 0.28, leafMat);
-      leafMesh.position.copy(leafPos);
-
-      const az = Math.atan2(normal.z, normal.x);
-      leafMesh.rotation.y = -az - Math.PI / 2 + (isLeft ? 0.25 : -0.25);
-      leafMesh.rotation.x = 1.40 + (1 - t) * 0.20;
-      leafMesh.rotation.z = isLeft ? 0.18 : -0.18;
-
-      vineGroup.add(leafMesh);
+      const frac = i / cfg.count;
+      const lMesh = new THREE.Mesh(
+        buildBotanicalLeafGeometry(0.054 - frac * 0.016, 0.068 - frac * 0.022, 0.28, 200 + cIdx * 23 + i * 7),
+        i === cfg.count - 1 ? leafMats.youngShoot : leafMats.variegatedGold
+      );
+      lMesh.position.copy(leafBase);
+      const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), leafDir);
+      q.premultiply(new THREE.Quaternion().setFromAxisAngle(leafDir, isLeft ? 0.28 : -0.28));
+      lMesh.quaternion.copy(q);
+      lMesh.castShadow = true;
+      foliageGroup.add(lMesh);
     }
-
-    return vineGroup;
-  }
-
-  foliageGroup.add(createTrailingVine(2.15, 1.0, 7, 'Trailing_Vine_Front_Left'));
-  foliageGroup.add(createTrailingVine(-0.70, 0.85, 5, 'Trailing_Vine_Right'));
-  foliageGroup.add(createTrailingVine(1.15, 0.65, 4, 'Trailing_Vine_Front'));
+  });
 
   plantPotGroup.add(foliageGroup);
   scene.add(plantPotGroup);
 
-  // =========================================================================
-  // 7. EXPORT TO BINARY .GLB AND READABLE .GLTF
-  // =========================================================================
   const outputDir = path.join(__dirname, '..', 'public', 'models');
+  const savedDir = path.join(__dirname, '..', 'saved_models', 'plant_pot');
   fs.mkdirSync(outputDir, { recursive: true });
+  fs.mkdirSync(savedDir, { recursive: true });
 
   const exporter = new GLTFExporter();
-
-  console.log('Exporting realistic trailing pothos plant pot .glb file...');
   const glbBuffer = await exporter.parseAsync(scene, { binary: true });
-  const glbPath = path.join(outputDir, 'plant_pot_realistic.glb');
-  fs.writeFileSync(glbPath, Buffer.from(glbBuffer));
-  const glbSize = (fs.statSync(glbPath).size / 1024).toFixed(1);
-  console.log(`Saved ${glbPath} (${glbSize} KB)`);
+  fs.writeFileSync(path.join(outputDir, 'plant_pot_realistic.glb'), Buffer.from(glbBuffer));
+  fs.writeFileSync(path.join(savedDir, 'plant_pot_realistic.glb'), Buffer.from(glbBuffer));
 
-  console.log('Exporting readable plant pot .gltf file...');
   const gltfJson = await exporter.parseAsync(scene, { binary: false });
-  const gltfPath = path.join(outputDir, 'plant_pot_realistic.gltf');
-  fs.writeFileSync(gltfPath, JSON.stringify(gltfJson, null, 2));
-  const gltfSize = (fs.statSync(gltfPath).size / 1024).toFixed(1);
-  console.log(`Saved ${gltfPath} (${gltfSize} KB)`);
+  fs.writeFileSync(path.join(outputDir, 'plant_pot_realistic.gltf'), JSON.stringify(gltfJson, null, 2));
+  fs.writeFileSync(path.join(savedDir, 'plant_pot_realistic.gltf'), JSON.stringify(gltfJson, null, 2));
 
-  console.log('Photorealistic Trailing Pothos Plant Pot Generated Successfully!');
+  console.log('✅ Peak-Detail Plant Pot GLB & GLTF exported successfully!');
 }
 
 generatePhotorealisticPlantPot().catch(console.error);

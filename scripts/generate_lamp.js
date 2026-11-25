@@ -21,241 +21,299 @@ global.FileReader = class FileReader {
   }
 };
 
+function buildFlutedTravertinePedestal() {
+  const radialSegs = 96;
+  const profile = [
+    [0.011, 0.049],
+    [0.014, 0.052],
+    [0.025, 0.055],
+    [0.048, 0.056],
+    [0.075, 0.052],
+    [0.102, 0.043],
+    [0.125, 0.031],
+    [0.142, 0.021],
+    [0.150, 0.019],
+    [0.155, 0.021],
+  ];
+
+  const curvePts = profile.map(([y, r]) => new THREE.Vector2(r, y));
+  const spline = new THREE.SplineCurve(curvePts);
+  const ySteps = 36;
+
+  const verts = [];
+  const uvs = [];
+  const indices = [];
+
+  for (let iy = 0; iy <= ySteps; iy++) {
+    const v = iy / ySteps;
+    const pt = spline.getPointAt(v);
+    const y = pt.y;
+    const baseR = pt.x;
+    const fluteFade = Math.sin(Math.min(1, Math.max(0, (v - 0.05) / 0.85)) * Math.PI);
+    const amp = 0.0018 * Math.pow(fluteFade, 0.7);
+
+    for (let ir = 0; ir <= radialSegs; ir++) {
+      const u = ir / radialSegs;
+      const theta = u * Math.PI * 2 + Math.PI;
+      const flute = Math.cos(u * Math.PI * 2 * 32);
+      const r = baseR + amp * flute;
+
+      verts.push(r * Math.sin(theta), y, r * Math.cos(theta));
+      uvs.push(u * 2, v);
+    }
+  }
+
+  for (let iy = 0; iy < ySteps; iy++) {
+    for (let ir = 0; ir < radialSegs; ir++) {
+      const a = iy * (radialSegs + 1) + ir;
+      const b = a + 1;
+      const c = a + (radialSegs + 1);
+      const d = c + 1;
+      indices.push(a, b, c, b, d, c);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
 async function generateRealisticLampModel() {
-  console.log('Generating Modern Minimalist Sculptural Bookshelf Table Lamp 3D Model...');
+  console.log('Generating Architectural Fluted Travertine & Linen Table Lamp 3D Model...');
 
   const scene = new THREE.Scene();
-  scene.name = 'Modern_Minimalist_Sculptural_Bookshelf_Lamp';
+  scene.name = 'Fluted_Travertine_Linen_Table_Lamp';
 
-  // =========================================================================
-  // 1. PBR MATERIALS
-  // =========================================================================
+  const travertineMat = new THREE.MeshStandardMaterial({
+    name: 'Honed_Crema_Travertine',
+    color: new THREE.Color('#e5dbc9'),
+    roughness: 0.48,
+    metalness: 0.02,
+  });
 
-  // Brushed Champagne / Antique Brass (Base, Stem, Collar, Finial)
   const brushedBrassMat = new THREE.MeshStandardMaterial({
-    name: 'Brushed_Champagne_Brass',
-    color: new THREE.Color('#d4af37'),
-    roughness: 0.22,
+    name: 'Brushed_Antique_Brass',
+    color: new THREE.Color('#c89f4e'),
+    roughness: 0.28,
     metalness: 0.88,
   });
 
-  // Polished Gold Accent (Dimmer Knob, Trim Rings)
-  const polishedGoldMat = new THREE.MeshStandardMaterial({
-    name: 'Polished_Gold_Trim',
-    color: new THREE.Color('#f5d77f'),
-    roughness: 0.12,
-    metalness: 0.95,
+  const polishedBrassMat = new THREE.MeshStandardMaterial({
+    name: 'Polished_Brass_Accents',
+    color: new THREE.Color('#dfb965'),
+    roughness: 0.16,
+    metalness: 0.94,
   });
 
-  // Matte Architectural Warm White Enamel / Satin Ceramic (Dome Shade Outer)
-  const matteWhiteEnamelMat = new THREE.MeshStandardMaterial({
-    name: 'Matte_Warm_White_Enamel',
-    color: new THREE.Color('#faf8f5'),
-    roughness: 0.32,
-    metalness: 0.04,
+  const linenShadeMat = new THREE.MeshStandardMaterial({
+    name: 'Woven_Oatmeal_Linen_Shade',
+    color: new THREE.Color('#efe7d6'),
+    emissive: new THREE.Color('#ffcf78'),
+    emissiveIntensity: 0.0,
+    roughness: 0.88,
+    side: THREE.DoubleSide,
   });
 
-  // Glowing Opal Glass LED Diffuser (Underside of Dome)
-  const opalDiffuserMat = new THREE.MeshStandardMaterial({
-    name: 'Opal_Glass_LED_Diffuser',
-    color: new THREE.Color('#fffbf0'),
-    emissive: new THREE.Color('#ffdfa0'),
-    emissiveIntensity: 1.85,
-    roughness: 0.15,
-    metalness: 0.0,
+  const bulbGlassMat = new THREE.MeshStandardMaterial({
+    name: 'A19_Glass_Bulb',
+    color: new THREE.Color('#fff9ec'),
+    transparent: true,
+    opacity: 0.45,
+    roughness: 0.08,
   });
 
-  // Dark Anti-scratch Felt Base Ring
-  const feltBaseMat = new THREE.MeshStandardMaterial({
-    name: 'Felt_NonSlip_Base_Ring',
-    color: new THREE.Color('#1c1917'),
-    roughness: 0.92,
-    metalness: 0.0,
+  const filamentMat = new THREE.MeshStandardMaterial({
+    name: 'Warm_Tungsten_Filament',
+    color: new THREE.Color('#6c5a4a'),
+    emissive: new THREE.Color('#ffab38'),
+    emissiveIntensity: 0.0,
   });
 
-  // Root lamp container group
+  const feltMat = new THREE.MeshStandardMaterial({
+    name: 'Felt_Base_Pad',
+    color: new THREE.Color('#1f1b18'),
+    roughness: 0.94,
+  });
+
   const lampGroup = new THREE.Group();
   lampGroup.name = 'Lamp_Root';
 
-  // Proportions scaled to fit shelf niches:
-  // Total Height: ~0.26m (26cm)
-  // Shade Diameter: ~0.18m (18cm)
-  // Base Diameter: ~0.11m (11cm)
-
-  // =========================================================================
-  // 2. PEDESTAL BASE & CONTROLS
-  // =========================================================================
-  // A. Felt base padding (bottom-most disc)
-  const feltGeo = new THREE.CylinderGeometry(0.052, 0.052, 0.003, 32);
-  const feltMesh = new THREE.Mesh(feltGeo, feltBaseMat);
+  // 1. Felt Base & Brass Plinth
+  const feltMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.003, 48), feltMat);
   feltMesh.position.y = 0.0015;
-  feltMesh.name = 'Felt_Bottom_Pad';
+  feltMesh.name = 'Felt_Base_Pad';
   lampGroup.add(feltMesh);
 
-  // B. Main Weighted Heavy Brass Plinth Base
-  const basePlinthGeo = new THREE.CylinderGeometry(0.05, 0.054, 0.022, 36);
-  const basePlinth = new THREE.Mesh(basePlinthGeo, brushedBrassMat);
-  basePlinth.position.y = 0.014;
-  basePlinth.castShadow = true;
-  basePlinth.receiveShadow = true;
-  basePlinth.name = 'Plinth_Brass_Base';
-  lampGroup.add(basePlinth);
+  const footPts = [
+    new THREE.Vector2(0.053, 0.0025),
+    new THREE.Vector2(0.058, 0.003),
+    new THREE.Vector2(0.059, 0.007),
+    new THREE.Vector2(0.055, 0.0105),
+    new THREE.Vector2(0.049, 0.012),
+  ];
+  const footPlinth = new THREE.Mesh(new THREE.LatheGeometry(footPts, 64).rotateY(Math.PI), brushedBrassMat);
+  footPlinth.castShadow = true;
+  footPlinth.name = 'Turned_Brass_Plinth';
+  lampGroup.add(footPlinth);
 
-  // Stepped upper base bevel
-  const baseBevelGeo = new THREE.CylinderGeometry(0.044, 0.05, 0.008, 36);
-  const baseBevel = new THREE.Mesh(baseBevelGeo, brushedBrassMat);
-  baseBevel.position.y = 0.029;
-  baseBevel.castShadow = true;
-  baseBevel.name = 'Base_Upper_Bevel';
-  lampGroup.add(baseBevel);
+  // 2. 32-Flute Travertine Stone Pedestal
+  const travPedestal = new THREE.Mesh(buildFlutedTravertinePedestal(), travertineMat);
+  travPedestal.castShadow = true;
+  travPedestal.receiveShadow = true;
+  travPedestal.name = 'Fluted_Travertine_Pedestal';
+  lampGroup.add(travPedestal);
 
-  // C. Tactile Knurled Dimmer Button / Switch Dial on front of base
-  const knobGeo = new THREE.CylinderGeometry(0.005, 0.005, 0.006, 20);
-  const knobMesh = new THREE.Mesh(knobGeo, polishedGoldMat);
-  knobMesh.rotation.x = Math.PI / 2;
-  knobMesh.position.set(0, 0.018, 0.051);
-  knobMesh.name = 'Tactile_Dimmer_Knob';
-  lampGroup.add(knobMesh);
+  // 3. Neck Collar, E26 Socket Cup & Rotary Dimmer Paddle (Wireless pedestal)
+  const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.022, 0.013, 36), polishedBrassMat);
+  collar.position.y = 0.161;
+  collar.name = 'Neck_Collar';
+  lampGroup.add(collar);
 
-  // Small indicator ring around knob
-  const knobRingGeo = new THREE.TorusGeometry(0.0065, 0.001, 16, 24);
-  const knobRingMesh = new THREE.Mesh(knobRingGeo, polishedGoldMat);
-  knobRingMesh.position.set(0, 0.018, 0.051);
-  knobRingMesh.name = 'Dimmer_Trim_Ring';
-  lampGroup.add(knobRingMesh);
+  const saddle = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.004, 0.009), brushedBrassMat);
+  saddle.position.y = 0.171;
+  saddle.name = 'Harp_Saddle';
+  lampGroup.add(saddle);
 
-  // =========================================================================
-  // 3. SLENDER CENTRAL COLUMN STEM
-  // =========================================================================
-  // Lower collar ring
-  const lowerCollarGeo = new THREE.CylinderGeometry(0.014, 0.018, 0.01, 28);
-  const lowerCollar = new THREE.Mesh(lowerCollarGeo, polishedGoldMat);
-  lowerCollar.position.y = 0.038;
-  lowerCollar.name = 'Stem_Lower_Collar';
-  lampGroup.add(lowerCollar);
+  const socket = new THREE.Mesh(new THREE.CylinderGeometry(0.0155, 0.0145, 0.036, 32), brushedBrassMat);
+  socket.position.y = 0.191;
+  socket.name = 'E26_Socket_Cup';
+  lampGroup.add(socket);
 
-  // Slender vertical column stem (gently tapering upward)
-  const stemGeo = new THREE.CylinderGeometry(0.009, 0.012, 0.135, 28);
-  const stemMesh = new THREE.Mesh(stemGeo, brushedBrassMat);
-  stemMesh.position.y = 0.11;
-  stemMesh.castShadow = true;
-  stemMesh.name = 'Central_Stem_Column';
-  lampGroup.add(stemMesh);
+  const socketRing = new THREE.Mesh(new THREE.CylinderGeometry(0.0165, 0.0165, 0.005, 32), polishedBrassMat);
+  socketRing.position.y = 0.207;
+  lampGroup.add(socketRing);
 
-  // Upper neck collar below shade
-  const upperCollarGeo = new THREE.CylinderGeometry(0.016, 0.01, 0.014, 28);
-  const upperCollar = new THREE.Mesh(upperCollarGeo, polishedGoldMat);
-  upperCollar.position.y = 0.184;
-  upperCollar.name = 'Stem_Upper_Collar';
-  lampGroup.add(upperCollar);
+  const switchShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.0018, 0.0018, 0.012, 12), polishedBrassMat);
+  switchShaft.rotation.z = Math.PI / 2;
+  switchShaft.position.set(0.020, 0.188, 0);
+  lampGroup.add(switchShaft);
 
-  // =========================================================================
-  // 4. SCULPTURAL MUSHROOM DOME SHADE (Outer Shell + Inner Diffuser)
-  // =========================================================================
-  // Outer Dome Shell using half-sphere / curved silhouette
-  // Sphere radius 0.09, clipped to top hemisphere with gentle flared skirt
-  const domeGeo = new THREE.SphereGeometry(
-    0.09,
-    36,
-    24,
-    0,
-    Math.PI * 2,
-    0,
-    Math.PI * 0.52
+  const switchPaddle = new THREE.Mesh(new THREE.BoxGeometry(0.009, 0.0075, 0.0022), polishedBrassMat);
+  switchPaddle.position.set(0.027, 0.188, 0);
+  switchPaddle.name = 'Rotary_Dimmer_Key';
+  lampGroup.add(switchPaddle);
+
+  // 5. Harp Arms, Spider Wires & Brass Finial
+  [-1, 1].forEach((sign) => {
+    const armCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(sign * 0.015, 0.172, 0),
+      new THREE.Vector3(sign * 0.046, 0.186, 0),
+      new THREE.Vector3(sign * 0.052, 0.232, 0),
+      new THREE.Vector3(sign * 0.036, 0.272, 0),
+      new THREE.Vector3(sign * 0.008, 0.286, 0),
+    ]);
+    const arm = new THREE.Mesh(new THREE.TubeGeometry(armCurve, 24, 0.0017, 8, false), polishedBrassMat);
+    arm.name = sign < 0 ? 'Harp_Arm_Left' : 'Harp_Arm_Right';
+    lampGroup.add(arm);
+  });
+
+  const harpCap = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.009, 0.005, 24), polishedBrassMat);
+  harpCap.position.y = 0.286;
+  lampGroup.add(harpCap);
+
+  [0, (Math.PI * 2) / 3, (Math.PI * 4) / 3].forEach((ang, idx) => {
+    const spoke = new THREE.Mesh(new THREE.CylinderGeometry(0.0011, 0.0011, 0.074, 8), polishedBrassMat);
+    spoke.position.set(Math.cos(ang) * 0.042, 0.285, Math.sin(ang) * 0.042);
+    spoke.rotation.set(0, -ang, Math.PI / 2);
+    spoke.name = `Spider_Wire_${idx + 1}`;
+    lampGroup.add(spoke);
+  });
+
+  const finialNeck = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.007, 0.007, 20), polishedBrassMat);
+  finialNeck.position.y = 0.293;
+  lampGroup.add(finialNeck);
+
+  const finialBall = new THREE.Mesh(new THREE.SphereGeometry(0.0075, 24, 18), polishedBrassMat);
+  finialBall.position.y = 0.301;
+  finialBall.name = 'Brass_Ball_Finial';
+  lampGroup.add(finialBall);
+
+  // 6. Glowing Glass A19 Bulb & Tungsten Filament
+  const bulbBase = new THREE.Mesh(new THREE.CylinderGeometry(0.0085, 0.009, 0.006, 20), polishedBrassMat);
+  bulbBase.position.y = 0.211;
+  lampGroup.add(bulbBase);
+
+  const bulbPts = [
+    new THREE.Vector2(0.008, 0.210),
+    new THREE.Vector2(0.012, 0.220),
+    new THREE.Vector2(0.021, 0.236),
+    new THREE.Vector2(0.022, 0.249),
+    new THREE.Vector2(0.016, 0.261),
+    new THREE.Vector2(0.006, 0.267),
+    new THREE.Vector2(0.0, 0.268),
+  ];
+  const bulbMesh = new THREE.Mesh(new THREE.LatheGeometry(bulbPts, 32), bulbGlassMat);
+  bulbMesh.name = 'Clear_Glass_A19_Bulb';
+  lampGroup.add(bulbMesh);
+
+  const filPts = [];
+  for (let i = 0; i <= 24; i++) {
+    const t = i / 24;
+    const angle = t * Math.PI * 1.4 - Math.PI * 0.2;
+    filPts.push(
+      new THREE.Vector3(
+        Math.sin(angle) * 0.0085,
+        0.238 + Math.cos(angle) * 0.009 + Math.sin(t * Math.PI * 10) * 0.0012,
+        Math.cos(t * Math.PI * 10) * 0.0012
+      )
+    );
+  }
+  const filMesh = new THREE.Mesh(
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(filPts), 36, 0.00055, 6, false),
+    filamentMat
   );
-  // Scale vertically to create a graceful elliptical mushroom cap
-  domeGeo.scale(1, 0.65, 1);
-  const domeMesh = new THREE.Mesh(domeGeo, matteWhiteEnamelMat);
-  domeMesh.position.y = 0.205;
-  domeMesh.castShadow = true;
-  domeMesh.receiveShadow = true;
-  domeMesh.name = 'Mushroom_Dome_Outer_Shade';
-  lampGroup.add(domeMesh);
+  filMesh.name = 'Glowing_Tungsten_Filament';
+  lampGroup.add(filMesh);
 
-  // Dome lower rim lip (polished brass edge ring)
-  const rimRingGeo = new THREE.TorusGeometry(0.0895, 0.0025, 16, 48);
-  const rimRingMesh = new THREE.Mesh(rimRingGeo, polishedGoldMat);
-  rimRingMesh.rotation.x = Math.PI / 2;
-  rimRingMesh.position.y = 0.203;
-  rimRingMesh.name = 'Shade_Brass_Rim_Lip';
-  lampGroup.add(rimRingMesh);
-
-  // Underside Frosted Opal Glass Diffuser Disc
-  const diffuserGeo = new THREE.CylinderGeometry(0.086, 0.086, 0.004, 36);
-  const diffuserMesh = new THREE.Mesh(diffuserGeo, opalDiffuserMat);
-  diffuserMesh.position.y = 0.205;
-  diffuserMesh.name = 'Opal_Glass_Diffuser_Disc';
-  lampGroup.add(diffuserMesh);
-
-  // Central under-shade brass socket cap
-  const socketCapGeo = new THREE.CylinderGeometry(0.02, 0.014, 0.018, 24);
-  const socketCap = new THREE.Mesh(socketCapGeo, brushedBrassMat);
-  socketCap.position.y = 0.198;
-  socketCap.name = 'Under_Socket_Cap';
-  lampGroup.add(socketCap);
-
-  // =========================================================================
-  // 5. APEX FINIAL CAP (Top of Dome)
-  // =========================================================================
-  const finialBevelGeo = new THREE.CylinderGeometry(0.014, 0.018, 0.006, 24);
-  const finialBevel = new THREE.Mesh(finialBevelGeo, polishedGoldMat);
-  finialBevel.position.y = 0.264;
-  finialBevel.name = 'Finial_Base_Bevel';
-  lampGroup.add(finialBevel);
-
-  const finialSphereGeo = new THREE.SphereGeometry(0.009, 20, 20);
-  const finialSphere = new THREE.Mesh(finialSphereGeo, brushedBrassMat);
-  finialSphere.position.y = 0.274;
-  finialSphere.castShadow = true;
-  finialSphere.name = 'Finial_Apex_Knob';
-  lampGroup.add(finialSphere);
+  // 7. Open-Bottom & Open-Top Empire Linen Shade
+  const shadePts = [
+    new THREE.Vector2(0.076, 0.289),
+    new THREE.Vector2(0.078, 0.291),
+    new THREE.Vector2(0.079, 0.288),
+    new THREE.Vector2(0.090, 0.232),
+    new THREE.Vector2(0.101, 0.176),
+    new THREE.Vector2(0.102, 0.172),
+    new THREE.Vector2(0.100, 0.171),
+  ];
+  const shadeMesh = new THREE.Mesh(new THREE.LatheGeometry(shadePts, 72).rotateY(Math.PI), linenShadeMat);
+  shadeMesh.castShadow = true;
+  shadeMesh.receiveShadow = true;
+  shadeMesh.name = 'Woven_Linen_Empire_Shade';
+  lampGroup.add(shadeMesh);
 
   scene.add(lampGroup);
 
-  // =========================================================================
-  // 6. EXPORT TO GLB & GLTF
-  // =========================================================================
   const exporter = new GLTFExporter();
-
   const publicModelsDir = path.join(__dirname, '..', 'public', 'models');
   const savedModelsDir = path.join(__dirname, '..', 'saved_models', 'table_lamp');
 
   if (!fs.existsSync(publicModelsDir)) fs.mkdirSync(publicModelsDir, { recursive: true });
   if (!fs.existsSync(savedModelsDir)) fs.mkdirSync(savedModelsDir, { recursive: true });
 
-  // Export Binary GLB
   exporter.parse(
     scene,
     (glbArrayBuffer) => {
       const buffer = Buffer.from(glbArrayBuffer);
-      const pubGlbPath = path.join(publicModelsDir, 'table_lamp_realistic.glb');
-      const savedGlbPath = path.join(savedModelsDir, 'table_lamp_realistic.glb');
-
-      fs.writeFileSync(pubGlbPath, buffer);
-      fs.writeFileSync(savedGlbPath, buffer);
-      console.log(`✅ Binary GLB saved successfully: ${pubGlbPath} (${(buffer.length / 1024).toFixed(1)} KB)`);
+      fs.writeFileSync(path.join(publicModelsDir, 'table_lamp_realistic.glb'), buffer);
+      fs.writeFileSync(path.join(savedModelsDir, 'table_lamp_realistic.glb'), buffer);
+      console.log(`✅ Binary GLB saved successfully (${(buffer.length / 1024).toFixed(1)} KB)`);
     },
-    (err) => {
-      console.error('Error generating GLB:', err);
-    },
+    (err) => console.error('Error generating GLB:', err),
     { binary: true }
   );
 
-  // Export Text GLTF
   exporter.parse(
     scene,
     (gltf) => {
       const jsonStr = JSON.stringify(gltf, null, 2);
-      const pubGltfPath = path.join(publicModelsDir, 'table_lamp_realistic.gltf');
-      const savedGltfPath = path.join(savedModelsDir, 'table_lamp_realistic.gltf');
-
-      fs.writeFileSync(pubGltfPath, jsonStr, 'utf8');
-      fs.writeFileSync(savedGltfPath, jsonStr, 'utf8');
-      console.log(`✅ Text GLTF saved successfully: ${pubGltfPath}`);
+      fs.writeFileSync(path.join(publicModelsDir, 'table_lamp_realistic.gltf'), jsonStr, 'utf8');
+      fs.writeFileSync(path.join(savedModelsDir, 'table_lamp_realistic.gltf'), jsonStr, 'utf8');
+      console.log('✅ Text GLTF saved successfully');
     },
-    (err) => {
-      console.error('Error generating GLTF:', err);
-    },
+    (err) => console.error('Error generating GLTF:', err),
     { binary: false }
   );
 }
