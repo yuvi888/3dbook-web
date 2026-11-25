@@ -120,14 +120,107 @@ function buildCurvedVistaGeometry(width: number, height: number, curveDepth = 0.
   return geo;
 }
 
+type SharedWindowBaseAssets = {
+  timberMat: THREE.MeshStandardMaterial;
+  gasketMat: THREE.MeshStandardMaterial;
+  spacerMat: THREE.MeshStandardMaterial;
+  brassMat: THREE.MeshStandardMaterial;
+  sillStoneMat: THREE.MeshStandardMaterial;
+  glassMat: THREE.MeshPhysicalMaterial;
+  vistaBackMat: THREE.MeshStandardMaterial;
+  vistaGeo: THREE.BufferGeometry;
+  vistaBackGeo: THREE.BufferGeometry;
+  vistaMats: Partial<Record<'left' | 'right', THREE.MeshBasicMaterial>>;
+};
+
+let cachedWindowBaseAssets: SharedWindowBaseAssets | null = null;
+
+function getSharedWindowAssets(variant: 'left' | 'right', outdoorVistaTex: THREE.Texture) {
+  if (!cachedWindowBaseAssets) {
+    const tMaps = createWhiteTimberPBR();
+    const tMat = new THREE.MeshStandardMaterial({
+      map: tMaps.map,
+      normalMap: tMaps.normalMap,
+      normalScale: new THREE.Vector2(0.45, 0.45),
+      roughness: 0.42,
+      metalness: 0.02,
+    });
+
+    const gMat = new THREE.MeshStandardMaterial({ color: '#222428', roughness: 0.72, metalness: 0.15 });
+    const spMat = new THREE.MeshStandardMaterial({ color: '#6b7078', roughness: 0.35, metalness: 0.8 });
+    const bMat = new THREE.MeshStandardMaterial({ color: '#c89f4e', roughness: 0.24, metalness: 0.88 });
+    const sMat = new THREE.MeshStandardMaterial({ color: '#e6dfd3', roughness: 0.56, metalness: 0.02 });
+
+    const reflectionMap = createGlassReflectionAlphaMap();
+    const glMat = new THREE.MeshPhysicalMaterial({
+      color: new THREE.Color('#eef8fc'),
+      transparent: true,
+      opacity: 0.14,
+      alphaMap: reflectionMap,
+      roughness: 0.03,
+      metalness: 0.08,
+      reflectivity: 0.96,
+      clearcoat: 1.0,
+      clearcoatRoughness: 0.02,
+      ior: 1.52,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+
+    const vGeo = buildCurvedVistaGeometry(1.18, 1.54, 0.015);
+    const vBackGeo = new THREE.PlaneGeometry(1.22, 1.60);
+
+    const vbMat = new THREE.MeshStandardMaterial({
+      color: '#e5dfd3',
+      roughness: 0.72,
+      side: THREE.DoubleSide,
+    });
+
+    cachedWindowBaseAssets = {
+      timberMat: tMat,
+      gasketMat: gMat,
+      spacerMat: spMat,
+      brassMat: bMat,
+      sillStoneMat: sMat,
+      glassMat: glMat,
+      vistaBackMat: vbMat,
+      vistaGeo: vGeo,
+      vistaBackGeo: vBackGeo,
+      vistaMats: {},
+    };
+  }
+
+  let vMat = cachedWindowBaseAssets.vistaMats[variant];
+  if (!vMat) {
+    vMat = new THREE.MeshBasicMaterial({
+      map: outdoorVistaTex,
+      toneMapped: false,
+    });
+    cachedWindowBaseAssets.vistaMats[variant] = vMat;
+  }
+
+  return {
+    timberMat: cachedWindowBaseAssets.timberMat,
+    gasketMat: cachedWindowBaseAssets.gasketMat,
+    spacerMat: cachedWindowBaseAssets.spacerMat,
+    brassMat: cachedWindowBaseAssets.brassMat,
+    sillStoneMat: cachedWindowBaseAssets.sillStoneMat,
+    glassMat: cachedWindowBaseAssets.glassMat,
+    vistaMat: vMat,
+    vistaBackMat: cachedWindowBaseAssets.vistaBackMat,
+    vistaGeo: cachedWindowBaseAssets.vistaGeo,
+    vistaBackGeo: cachedWindowBaseAssets.vistaBackGeo,
+  };
+}
+
 export function RealisticGlassWindow3D({
-  autoRotate,
+  autoRotate = false,
   variant = 'left',
 }: {
-  autoRotate: boolean;
+  autoRotate?: boolean;
   variant?: 'left' | 'right';
 }) {
-  const groupRef = useRef<any>();
+  const groupRef = useRef<THREE.Group>(null!);
 
   useFrame((_, delta) => {
     if (autoRotate && groupRef.current) {
@@ -156,65 +249,7 @@ export function RealisticGlassWindow3D({
     vistaBackMat,
     vistaGeo,
     vistaBackGeo,
-  } = useMemo(() => {
-    const tMaps = createWhiteTimberPBR();
-    const tMat = new THREE.MeshStandardMaterial({
-      map: tMaps.map,
-      normalMap: tMaps.normalMap,
-      normalScale: new THREE.Vector2(0.45, 0.45),
-      roughness: 0.42,
-      metalness: 0.02,
-    });
-
-    const gMat = new THREE.MeshStandardMaterial({ color: '#222428', roughness: 0.72, metalness: 0.15 });
-    const spMat = new THREE.MeshStandardMaterial({ color: '#6b7078', roughness: 0.35, metalness: 0.8 });
-    const bMat = new THREE.MeshStandardMaterial({ color: '#c89f4e', roughness: 0.24, metalness: 0.88 });
-    const sMat = new THREE.MeshStandardMaterial({ color: '#e6dfd3', roughness: 0.56, metalness: 0.02 });
-
-    const reflectionMap = createGlassReflectionAlphaMap();
-    const glMat = new THREE.MeshPhysicalMaterial({
-      color: new THREE.Color('#eef8fc'),
-      transparent: true,
-      opacity: 0.24,
-      alphaMap: reflectionMap,
-      roughness: 0.03,
-      metalness: 0.10,
-      reflectivity: 0.98,
-      clearcoat: 1.0,
-      clearcoatRoughness: 0.02,
-      ior: 1.52,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    });
-
-    // Sized inside the window opening reveal box so the sky/grass vista never overflows outside the frame
-    const vGeo = buildCurvedVistaGeometry(1.16, 1.54, 0.035);
-    const vBackGeo = new THREE.PlaneGeometry(1.22, 1.60);
-
-    const vMat = new THREE.MeshBasicMaterial({
-      map: outdoorVistaTex,
-      toneMapped: false,
-    });
-
-    const vbMat = new THREE.MeshStandardMaterial({
-      color: '#d8d2c6',
-      roughness: 0.78,
-      side: THREE.DoubleSide,
-    });
-
-    return {
-      timberMat: tMat,
-      gasketMat: gMat,
-      spacerMat: spMat,
-      brassMat: bMat,
-      sillStoneMat: sMat,
-      glassMat: glMat,
-      vistaMat: vMat,
-      vistaBackMat: vbMat,
-      vistaGeo: vGeo,
-      vistaBackGeo: vBackGeo,
-    };
-  }, [outdoorVistaTex]);
+  } = useMemo(() => getSharedWindowAssets(variant, outdoorVistaTex), [variant, outdoorVistaTex]);
 
   const innerW = winW - 0.11;
   const innerH = winH - 0.11;
@@ -229,23 +264,24 @@ export function RealisticGlassWindow3D({
     <group ref={groupRef} position={[0, -0.02, 0]}>
       {/* ===================================================================== */}
       {/* 1. REAL OUTDOOR SKY & GRASS SCENERY CONTAINED OUTSIDE THE WINDOW (-Z) */}
+      {/* Positioned closely behind double glazing (-0.042) so sky/sea shines down steep corridor angles */}
       {/* ===================================================================== */}
-      <group position={[0, 0, -0.24]}>
+      <group position={[0, 0, -0.042]}>
         {/* Real generated landscape photo of blue sky, horizon trees & green grass recessed outside glazing */}
         <mesh geometry={vistaGeo} material={vistaMat} />
-        {/* Warm stone/stucco rear enclosure shell + side reveal walls connecting flush to exterior window frame */}
+        {/* Warm stone/stucco rear backing enclosure connecting flush to window frame */}
         <mesh geometry={vistaBackGeo} material={vistaBackMat} position={[0, 0, -0.012]} />
-        <mesh position={[-0.59, 0, 0.09]} material={vistaBackMat}>
-          <boxGeometry args={[0.04, 1.60, 0.22]} />
+        <mesh position={[-0.59, 0, 0.025]} material={vistaBackMat}>
+          <boxGeometry args={[0.04, 1.60, 0.06]} />
         </mesh>
-        <mesh position={[0.59, 0, 0.09]} material={vistaBackMat}>
-          <boxGeometry args={[0.04, 1.60, 0.22]} />
+        <mesh position={[0.59, 0, 0.025]} material={vistaBackMat}>
+          <boxGeometry args={[0.04, 1.60, 0.06]} />
         </mesh>
-        <mesh position={[0, 0.78, 0.09]} material={vistaBackMat}>
-          <boxGeometry args={[1.22, 0.04, 0.22]} />
+        <mesh position={[0, 0.78, 0.025]} material={vistaBackMat}>
+          <boxGeometry args={[1.22, 0.04, 0.06]} />
         </mesh>
-        <mesh position={[0, -0.78, 0.09]} material={vistaBackMat}>
-          <boxGeometry args={[1.22, 0.04, 0.22]} />
+        <mesh position={[0, -0.78, 0.025]} material={vistaBackMat}>
+          <boxGeometry args={[1.22, 0.04, 0.06]} />
         </mesh>
       </group>
 

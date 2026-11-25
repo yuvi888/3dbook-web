@@ -331,8 +331,177 @@ function buildFlutedTallPlanter(radius: number, height: number): THREE.BufferGeo
   return geo;
 }
 
-export function RealisticTallFiddleFig3D({ autoRotate }: { autoRotate: boolean }) {
-  const groupRef = useRef<any>();
+type SharedFiddleFigAssets = {
+  leafMats: Record<'mature' | 'young', THREE.MeshPhysicalMaterial>;
+  barkMat: THREE.MeshStandardMaterial;
+  potMat: THREE.MeshPhysicalMaterial;
+  potInnerMat: THREE.MeshStandardMaterial;
+  soilMat: THREE.MeshStandardMaterial;
+  flutedPotGeo: THREE.BufferGeometry;
+  rimLipGeo: THREE.BufferGeometry;
+  innerPotGeo: THREE.BufferGeometry;
+  soilGeo: THREE.BufferGeometry;
+  trunkGeos: THREE.BufferGeometry[];
+  figLeaves: Array<{
+    id: string;
+    petioleGeo: THREE.BufferGeometry;
+    leafGeo: THREE.BufferGeometry;
+    pos: [number, number, number];
+    q: THREE.Quaternion;
+    tone: 'mature' | 'young';
+  }>;
+};
+
+let cachedFiddleFigAssets: SharedFiddleFigAssets | null = null;
+
+function getSharedFiddleFigAssets(potRadius: number, potHeight: number, soilY: number): SharedFiddleFigAssets {
+  if (cachedFiddleFigAssets) return cachedFiddleFigAssets;
+
+  const mature = createFiddleLeafPBR('mature');
+  const young = createFiddleLeafPBR('young');
+
+  const makeLeafMat = (m: { map: THREE.CanvasTexture; normalMap: THREE.CanvasTexture }) =>
+    new THREE.MeshPhysicalMaterial({
+      map: m.map,
+      normalMap: m.normalMap,
+      normalScale: new THREE.Vector2(1.25, 1.25),
+      roughness: 0.36,
+      metalness: 0.01,
+      clearcoat: 0.26,
+      clearcoatRoughness: 0.42,
+      sheen: 0.22,
+      sheenColor: new THREE.Color('#8ac45f'),
+      side: THREE.DoubleSide,
+    });
+
+  const bMaps = createFicusBarkPBR();
+  const bMat = new THREE.MeshStandardMaterial({
+    map: bMaps.map,
+    normalMap: bMaps.normalMap,
+    normalScale: new THREE.Vector2(1.1, 1.1),
+    roughness: 0.84,
+  });
+
+  const pTex = createWarmFlutedLimestoneTexture();
+  const pMat = new THREE.MeshPhysicalMaterial({
+    map: pTex,
+    roughness: 0.48,
+    clearcoat: 0.18,
+    clearcoatRoughness: 0.35,
+  });
+  const pInMat = new THREE.MeshStandardMaterial({ color: '#d5cbb8', roughness: 0.72 });
+
+  const sMaps = createRichSoilPBR(2.4);
+  const sMat = new THREE.MeshStandardMaterial({
+    map: sMaps.map,
+    normalMap: sMaps.normalMap,
+    normalScale: new THREE.Vector2(1.5, 1.5),
+    roughness: 0.94,
+  });
+
+  const wall = 0.014;
+  const fPotGeo = buildFlutedTallPlanter(potRadius, potHeight);
+  const rGeo = new THREE.TorusGeometry(potRadius - wall * 0.45, wall * 0.55, 14, 72);
+  rGeo.rotateX(Math.PI / 2);
+
+  const iPts = [
+    new THREE.Vector2(potRadius - wall, potHeight),
+    new THREE.Vector2(potRadius - wall - 0.004, soilY - 0.05),
+  ];
+  const iGeo = new THREE.LatheGeometry(iPts, 48).rotateY(Math.PI);
+  const soGeo = buildSoilMoundGeometry(potRadius - wall + 0.002, 0.020);
+
+  const mainTrunkPts = [
+    new THREE.Vector3(0.0, soilY - 0.02, 0.0),
+    new THREE.Vector3(-0.018, 0.65, 0.015),
+    new THREE.Vector3(0.012, 0.92, -0.012),
+    new THREE.Vector3(-0.008, 1.16, 0.008),
+  ];
+  const branch1Pts = [
+    new THREE.Vector3(0.005, 0.88, -0.008),
+    new THREE.Vector3(0.095, 1.08, 0.065),
+    new THREE.Vector3(0.145, 1.32, 0.105),
+  ];
+  const branch2Pts = [
+    new THREE.Vector3(-0.006, 0.98, 0.005),
+    new THREE.Vector3(-0.105, 1.18, -0.055),
+    new THREE.Vector3(-0.155, 1.40, -0.085),
+  ];
+  const branch3Pts = [
+    new THREE.Vector3(-0.008, 1.15, 0.008),
+    new THREE.Vector3(-0.025, 1.34, 0.055),
+    new THREE.Vector3(0.012, 1.54, 0.020),
+  ];
+
+  const tGeos = [
+    buildTaperedTube(mainTrunkPts, 24, 0.024, 0.013, 10, true),
+    buildTaperedTube(branch1Pts, 16, 0.013, 0.007, 8, true),
+    buildTaperedTube(branch2Pts, 16, 0.013, 0.007, 8, true),
+    buildTaperedTube(branch3Pts, 14, 0.012, 0.006, 8, true),
+  ];
+
+  const branchCurves = [
+    { curve: new THREE.CatmullRomCurve3(branch3Pts), count: 11, scale: 0.95 },
+    { curve: new THREE.CatmullRomCurve3(branch1Pts), count: 10, scale: 1.0 },
+    { curve: new THREE.CatmullRomCurve3(branch2Pts), count: 9, scale: 1.0 },
+  ];
+
+  const leaves: SharedFiddleFigAssets['figLeaves'] = [];
+
+  branchCurves.forEach((bc, bIdx) => {
+    for (let i = 0; i < bc.count; i++) {
+      const t = 0.25 + (i / (bc.count - 1)) * 0.74;
+      const bPt = bc.curve.getPointAt(t);
+      const azimuth = bIdx * 2.1 + i * 2.39996;
+      const reach = (0.045 + (1 - t) * 0.045) * bc.scale;
+      const lift = 0.035 + t * 0.03;
+
+      const leafBase = new THREE.Vector3(
+        bPt.x + Math.cos(azimuth) * reach,
+        bPt.y + lift,
+        bPt.z + Math.sin(azimuth) * reach
+      );
+
+      const dirY = 0.25 + t * 0.58;
+      const dirVec = new THREE.Vector3(Math.cos(azimuth), dirY, Math.sin(azimuth)).normalize();
+      const pMid = bPt.clone().lerp(leafBase, 0.55).add(new THREE.Vector3(0, 0.012, 0));
+      const pPre = leafBase.clone().sub(dirVec.clone().multiplyScalar(0.018));
+      const petioleGeo = buildTaperedTube([bPt, pMid, pPre, leafBase], 8, 0.005, 0.003, 6);
+
+      const w = (0.16 - t * 0.04) * bc.scale;
+      const len = (0.28 - t * 0.06) * bc.scale;
+      const leafGeo = buildFiddleLeafGeometry(w, len, 0.26 - t * 0.08, 30 + bIdx * 19 + i * 7);
+      const q = orientLeafSkyward(dirVec, ((i % 3) - 1) * 0.18);
+
+      leaves.push({
+        id: `fig-${bIdx}-${i}`,
+        petioleGeo,
+        leafGeo,
+        pos: [leafBase.x, leafBase.y, leafBase.z],
+        q,
+        tone: t > 0.80 ? 'young' : 'mature',
+      });
+    }
+  });
+
+  cachedFiddleFigAssets = {
+    leafMats: { mature: makeLeafMat(mature), young: makeLeafMat(young) },
+    barkMat: bMat,
+    potMat: pMat,
+    potInnerMat: pInMat,
+    soilMat: sMat,
+    flutedPotGeo: fPotGeo,
+    rimLipGeo: rGeo,
+    innerPotGeo: iGeo,
+    soilGeo: soGeo,
+    trunkGeos: tGeos,
+    figLeaves: leaves,
+  };
+  return cachedFiddleFigAssets;
+}
+
+export function RealisticTallFiddleFig3D({ autoRotate = false }: { autoRotate?: boolean }) {
+  const groupRef = useRef<THREE.Group>(null!);
 
   useFrame((_, delta) => {
     if (autoRotate && groupRef.current) {
@@ -356,157 +525,7 @@ export function RealisticTallFiddleFig3D({ autoRotate }: { autoRotate: boolean }
     soilGeo,
     trunkGeos,
     figLeaves,
-  } = useMemo(() => {
-    const mature = createFiddleLeafPBR('mature');
-    const young = createFiddleLeafPBR('young');
-
-    const makeLeafMat = (m: { map: THREE.CanvasTexture; normalMap: THREE.CanvasTexture }) =>
-      new THREE.MeshPhysicalMaterial({
-        map: m.map,
-        normalMap: m.normalMap,
-        normalScale: new THREE.Vector2(1.25, 1.25),
-        roughness: 0.36,
-        metalness: 0.01,
-        clearcoat: 0.26,
-        clearcoatRoughness: 0.42,
-        sheen: 0.22,
-        sheenColor: new THREE.Color('#8ac45f'),
-        side: THREE.DoubleSide,
-      });
-
-    const bMaps = createFicusBarkPBR();
-    const bMat = new THREE.MeshStandardMaterial({
-      map: bMaps.map,
-      normalMap: bMaps.normalMap,
-      normalScale: new THREE.Vector2(1.1, 1.1),
-      roughness: 0.84,
-    });
-
-    const pTex = createWarmFlutedLimestoneTexture();
-    const pMat = new THREE.MeshPhysicalMaterial({
-      map: pTex,
-      roughness: 0.48,
-      clearcoat: 0.18,
-      clearcoatRoughness: 0.35,
-    });
-    const pInMat = new THREE.MeshStandardMaterial({ color: '#d5cbb8', roughness: 0.72 });
-
-    const sMaps = createRichSoilPBR(2.4);
-    const sMat = new THREE.MeshStandardMaterial({
-      map: sMaps.map,
-      normalMap: sMaps.normalMap,
-      normalScale: new THREE.Vector2(1.5, 1.5),
-      roughness: 0.94,
-    });
-
-    const wall = 0.014;
-    const fPotGeo = buildFlutedTallPlanter(potRadius, potHeight);
-    const rGeo = new THREE.TorusGeometry(potRadius - wall * 0.45, wall * 0.55, 14, 72);
-    rGeo.rotateX(Math.PI / 2);
-
-    const iPts = [
-      new THREE.Vector2(potRadius - wall, potHeight),
-      new THREE.Vector2(potRadius - wall - 0.004, soilY - 0.05),
-    ];
-    const iGeo = new THREE.LatheGeometry(iPts, 48).rotateY(Math.PI);
-    const soGeo = buildSoilMoundGeometry(potRadius - wall + 0.002, 0.020);
-
-    // Multi-branching sculptural woody Ficus trunk rising to 1.48m
-    const mainTrunkPts = [
-      new THREE.Vector3(0.0, soilY - 0.02, 0.0),
-      new THREE.Vector3(-0.018, 0.65, 0.015),
-      new THREE.Vector3(0.012, 0.92, -0.012),
-      new THREE.Vector3(-0.008, 1.16, 0.008),
-    ];
-    const branch1Pts = [
-      new THREE.Vector3(0.005, 0.88, -0.008),
-      new THREE.Vector3(0.095, 1.08, 0.065),
-      new THREE.Vector3(0.145, 1.32, 0.105),
-    ];
-    const branch2Pts = [
-      new THREE.Vector3(-0.006, 0.98, 0.005),
-      new THREE.Vector3(-0.105, 1.18, -0.055),
-      new THREE.Vector3(-0.155, 1.40, -0.085),
-    ];
-    const branch3Pts = [
-      new THREE.Vector3(-0.008, 1.15, 0.008),
-      new THREE.Vector3(-0.025, 1.34, 0.055),
-      new THREE.Vector3(0.012, 1.54, 0.020),
-    ];
-
-    const tGeos = [
-      buildTaperedTube(mainTrunkPts, 24, 0.024, 0.013, 10, true),
-      buildTaperedTube(branch1Pts, 16, 0.013, 0.007, 8, true),
-      buildTaperedTube(branch2Pts, 16, 0.013, 0.007, 8, true),
-      buildTaperedTube(branch3Pts, 14, 0.012, 0.006, 8, true),
-    ];
-
-    // Curves for placing 30 lush Fiddle-Leaf Fig blades along the upper branches
-    const branchCurves = [
-      { curve: new THREE.CatmullRomCurve3(branch3Pts), count: 11, scale: 0.95 },
-      { curve: new THREE.CatmullRomCurve3(branch1Pts), count: 10, scale: 1.0 },
-      { curve: new THREE.CatmullRomCurve3(branch2Pts), count: 9, scale: 1.0 },
-    ];
-
-    const leaves: Array<{
-      id: string;
-      petioleGeo: THREE.BufferGeometry;
-      leafGeo: THREE.BufferGeometry;
-      pos: [number, number, number];
-      q: THREE.Quaternion;
-      tone: 'mature' | 'young';
-    }> = [];
-
-    branchCurves.forEach((bc, bIdx) => {
-      for (let i = 0; i < bc.count; i++) {
-        const t = 0.25 + (i / (bc.count - 1)) * 0.74;
-        const bPt = bc.curve.getPointAt(t);
-        const azimuth = bIdx * 2.1 + i * 2.39996; // Golden angle phyllotaxis!
-        const reach = (0.045 + (1 - t) * 0.045) * bc.scale;
-        const lift = 0.035 + t * 0.03;
-
-        const leafBase = new THREE.Vector3(
-          bPt.x + Math.cos(azimuth) * reach,
-          bPt.y + lift,
-          bPt.z + Math.sin(azimuth) * reach
-        );
-
-        const dirY = 0.25 + t * 0.58; // Lower leaves spread horizontally; top leaves cup upward
-        const dirVec = new THREE.Vector3(Math.cos(azimuth), dirY, Math.sin(azimuth)).normalize();
-        const pMid = bPt.clone().lerp(leafBase, 0.55).add(new THREE.Vector3(0, 0.012, 0));
-        const pPre = leafBase.clone().sub(dirVec.clone().multiplyScalar(0.018));
-        const petioleGeo = buildTaperedTube([bPt, pMid, pPre, leafBase], 8, 0.005, 0.003, 6);
-
-        const w = (0.16 - t * 0.04) * bc.scale;
-        const len = (0.28 - t * 0.06) * bc.scale;
-        const leafGeo = buildFiddleLeafGeometry(w, len, 0.26 - t * 0.08, 30 + bIdx * 19 + i * 7);
-        const q = orientLeafSkyward(dirVec, ((i % 3) - 1) * 0.18);
-
-        leaves.push({
-          id: `fig-${bIdx}-${i}`,
-          petioleGeo,
-          leafGeo,
-          pos: [leafBase.x, leafBase.y, leafBase.z],
-          q,
-          tone: t > 0.80 ? 'young' : 'mature',
-        });
-      }
-    });
-
-    return {
-      leafMats: { mature: makeLeafMat(mature), young: makeLeafMat(young) },
-      barkMat: bMat,
-      potMat: pMat,
-      potInnerMat: pInMat,
-      soilMat: sMat,
-      flutedPotGeo: fPotGeo,
-      rimLipGeo: rGeo,
-      innerPotGeo: iGeo,
-      soilGeo: soGeo,
-      trunkGeos: tGeos,
-      figLeaves: leaves,
-    };
-  }, [potRadius, potHeight, soilY]);
+  } = useMemo(() => getSharedFiddleFigAssets(potRadius, potHeight, soilY), [potRadius, potHeight, soilY]);
 
   return (
     <group ref={groupRef} position={[0, -0.78, 0]}>

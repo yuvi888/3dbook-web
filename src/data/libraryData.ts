@@ -6,7 +6,7 @@ export const BOOKSHELVES_DATA: BookshelfItem[] = [
     author: 'HARUKI MURAKAMI',
     genre: 'Magical Realism & Surrealism',
     description: 'Surreal narratives navigating loneliness, jazz music, nostalgia, and alternate dimensions.',
-    t: 0.12,
+    t: 0.065,
     side: 'left',
     books: [
       {
@@ -107,7 +107,7 @@ export const BOOKSHELVES_DATA: BookshelfItem[] = [
     author: 'GABRIEL GARCÍA MÁRQUEZ',
     genre: 'Epic Magical Realism',
     description: 'Nobel laureate chronicling the mythic solitude and passions of Latin America.',
-    t: 0.26,
+    t: 0.13,
     side: 'right',
     books: [
       {
@@ -195,7 +195,7 @@ export const BOOKSHELVES_DATA: BookshelfItem[] = [
     author: 'VIRGINIA WOOLF',
     genre: 'Modernist Stream of Consciousness',
     description: 'Pioneering internal monologue, exploring identity, gender, and the passage of time.',
-    t: 0.40,
+    t: 0.195,
     side: 'left',
     books: [
       {
@@ -296,7 +296,7 @@ export const BOOKSHELVES_DATA: BookshelfItem[] = [
     author: 'ISAAC ASIMOV',
     genre: 'Classic Hard Sci-Fi',
     description: 'Visionary master of the Three Laws of Robotics and galactic civilizational psychohistory.',
-    t: 0.54,
+    t: 0.26,
     side: 'right',
     books: [
       {
@@ -384,7 +384,7 @@ export const BOOKSHELVES_DATA: BookshelfItem[] = [
     author: 'JANE AUSTEN',
     genre: 'Regency Social Satire & Romance',
     description: 'Wit, irony, and incisive social commentary exploring marriage, manners, and independence.',
-    t: 0.68,
+    t: 0.325,
     side: 'left',
     books: [
       {
@@ -472,7 +472,7 @@ export const BOOKSHELVES_DATA: BookshelfItem[] = [
     author: 'ALBERT CAMUS',
     genre: 'Absurdism & Existentialism',
     description: 'Probing the human quest for meaning within an indifferent, silent universe.',
-    t: 0.82,
+    t: 0.39,
     side: 'right',
     books: [
       {
@@ -560,7 +560,7 @@ export const BOOKSHELVES_DATA: BookshelfItem[] = [
     author: 'JORGE LUIS BORGES',
     genre: 'Philosophical Labyrinths & Metafiction',
     description: 'Infinite libraries, labyrinths, mirrors, and philosophical paradoxes.',
-    t: 0.94,
+    t: 0.455,
     side: 'left',
     books: [
       {
@@ -641,6 +641,118 @@ export const BOOKSHELVES_DATA: BookshelfItem[] = [
         thickness: 0.10,
         depth: 0.52,
       },
+    ],
+  },
+  {
+    id: 'kafka',
+    author: 'FRANZ KAFKA',
+    genre: 'Existential Surrealism & Bureaucracy',
+    description: 'Alienating psychological labyrinths exploring guilt, transformation, and modern anxiety.',
+    t: 0.52,
+    side: 'right',
+    books: [
+      { id: 'kaf-1', title: 'The Metamorphosis', year: '1915', pages: 120, color: '#991b1b', spineColor: '#7f1d1d', accentColor: '#fef08a', summary: 'Gregor Samsa wakes one morning transformed into an unsettling creature.' },
+      { id: 'kaf-2', title: 'The Trial', year: '1925', pages: 255, color: '#1e3a8a', spineColor: '#1e3a8a', accentColor: '#dbeafe', summary: 'Josef K. is arrested and prosecuted by a remote, inscrutable authority.' },
+      { id: 'kaf-3', title: 'The Castle', year: '1926', pages: 352, color: '#3f6212', spineColor: '#365314', accentColor: '#ecfccb', summary: 'A land surveyor struggles endlessly to gain access to mysterious authorities.' },
+      { id: 'kaf-4', title: 'Amerika', year: '1927', pages: 320, color: '#b45309', spineColor: '#92400e', accentColor: '#fef3c7', summary: 'Young Karl Rossmann navigates an imaginative vision of America.' },
+      { id: 'kaf-5', title: 'In Penal Colony', year: '1919', pages: 96, color: '#581c87', spineColor: '#4c1d95', accentColor: '#f3e8ff', summary: 'An officer explains an elaborate execution apparatus to a visiting explorer.' },
+      { id: 'kaf-6', title: 'Letters to Milena', year: '1952', pages: 268, color: '#0f766e', spineColor: '#115e59', accentColor: '#ccfbf1', summary: 'Intimate correspondence revealing Kafka’s tender inner landscape.' },
+    ],
+  },
+  {
+    id: 'dostoevsky',
+    author: 'FYODOR DOSTOEVSKY',
+    genre: 'Russian Psychological Classics',
+    description: 'Deep moral excavations of conscience, faith, suffering, and human redemption.',
+    t: 0.585,
+    side: 'left',
+    books: [
+      { id: 'dos-1', title: 'Crime & Punishment', year: '1866', pages: 576, color: '#b91c1c', spineColor: '#991b1b', accentColor: '#fde68a', summary: 'Raskolnikov rationalizes murder and descends into torment and spiritual renewal.' },
+      { id: 'dos-2', title: 'Karamazov Brothers', year: '1880', pages: 824, color: '#1d4ed8', spineColor: '#1e40af', accentColor: '#e0e7ff', summary: 'Philosophical murder mystery examining faith, free will, and family rivalry.' },
+      { id: 'dos-3', title: 'The Idiot', year: '1869', pages: 656, color: '#047857', spineColor: '#065f46', accentColor: '#d1fae5', summary: 'Pure-hearted Prince Myshkin enters calculating St. Petersburg high society.' },
+      { id: 'dos-4', title: 'Notes Underground', year: '1864', pages: 150, color: '#7c2d12', spineColor: '#6c2710', accentColor: '#ffedd5', summary: 'Bitter, incandescent monologue challenging utopian rationalism.' },
+      { id: 'dos-5', title: 'Demons', year: '1872', pages: 733, color: '#4338ca', spineColor: '#3730a3', accentColor: '#e0e7ff', summary: 'Political allegory chronicling ideological radicalism in a provincial town.' },
+      { id: 'dos-6', title: 'White Nights', year: '1848', pages: 110, color: '#0284c7', spineColor: '#0369a1', accentColor: '#e0f2fe', summary: 'Four enchanted nocturnal encounters between two lonely dreamers.' },
+    ],
+  },
+  {
+    id: 'orwell',
+    author: 'GEORGE ORWELL',
+    genre: 'Dystopian & Political Literature',
+    description: 'Crystal-clear prose dissecting surveillance, propaganda, language, and power.',
+    t: 0.65,
+    side: 'right',
+    books: [
+      { id: 'orw-1', title: '1984', year: '1949', pages: 328, color: '#dc2626', spineColor: '#b91c1c', accentColor: '#fef2f2', summary: 'Winston Smith rebels secretly inside a totalitarian surveillance state.' },
+      { id: 'orw-2', title: 'Animal Farm', year: '1945', pages: 112, color: '#ca8a04', spineColor: '#a16207', accentColor: '#fef9c3', summary: 'A biting allegorical fairy story of revolution betrayed by corruption.' },
+      { id: 'orw-3', title: 'Homage Catalonia', year: '1938', pages: 232, color: '#059669', spineColor: '#047857', accentColor: '#ecfdf5', summary: 'First-hand account of idealism and treachery in the Spanish Civil War.' },
+      { id: 'orw-4', title: 'Down and Out', year: '1933', pages: 213, color: '#2563eb', spineColor: '#1d4ed8', accentColor: '#dbeafe', summary: 'Unflinching memoir exploring poverty in Paris dish-rooms and London slums.' },
+      { id: 'orw-5', title: 'Burmese Days', year: '1934', pages: 300, color: '#9333ea', spineColor: '#7e22ce', accentColor: '#f3e8ff', summary: 'Sharp critique of British imperialism through John Flory’s quiet despair.' },
+      { id: 'orw-6', title: 'Keep Aspidistra', year: '1936', pages: 264, color: '#0f766e', spineColor: '#115e59', accentColor: '#ccfbf1', summary: 'Gordon Comstock wages a stubborn battle against commercial materialism.' },
+    ],
+  },
+  {
+    id: 'tolstoy',
+    author: 'LEO TOLSTOY',
+    genre: 'Epic Realism & Philosophy',
+    description: 'Panoramic frescoes of history, aristocratic society, morality, and spiritual peace.',
+    t: 0.715,
+    side: 'left',
+    books: [
+      { id: 'tol-1', title: 'War and Peace', year: '1869', pages: 1225, color: '#1e40af', spineColor: '#1e3a8a', accentColor: '#fef08a', summary: 'Russian society across the Napoleonic invasions in sweeping epic scale.' },
+      { id: 'tol-2', title: 'Anna Karenina', year: '1878', pages: 864, color: '#be123c', spineColor: '#9f1239', accentColor: '#ffe4e6', summary: 'Tragic passion juxtaposed against Levin’s search for rustic faith.' },
+      { id: 'tol-3', title: 'Ivan Ilyich', year: '1886', pages: 128, color: '#4f46e5', spineColor: '#4338ca', accentColor: '#e0e7ff', summary: 'A dying magistrate confronts the hollow conventions of his life.' },
+      { id: 'tol-4', title: 'Resurrection', year: '1899', pages: 512, color: '#15803d', spineColor: '#166534', accentColor: '#dcfce7', summary: 'Prince Nekhlyudov seeks atonement for the ruin of a young woman.' },
+      { id: 'tol-5', title: 'Hadji Murat', year: '1912', pages: 168, color: '#c2410c', spineColor: '#9a3412', accentColor: '#ffedd5', summary: 'Defiant Caucasian commander caught between rival empires.' },
+      { id: 'tol-6', title: 'Childhood Years', year: '1852', pages: 185, color: '#0891b2', spineColor: '#0e7490', accentColor: '#cffafe', summary: 'Luminous recollections of innocence on an aristocratic country estate.' },
+    ],
+  },
+  {
+    id: 'morrison',
+    author: 'TONI MORRISON',
+    genre: 'Lyrical Historical Fiction',
+    description: 'Nobel laureate weaving memory, ancestral inheritance, folklore, and radiant dignity.',
+    t: 0.78,
+    side: 'right',
+    books: [
+      { id: 'mor-1', title: 'Beloved', year: '1987', pages: 324, color: '#9f1239', spineColor: '#881337', accentColor: '#fde047', summary: 'Sethe confronts the haunting memory of slavery in post-Civil War Ohio.' },
+      { id: 'mor-2', title: 'Song of Solomon', year: '1977', pages: 337, color: '#b45309', spineColor: '#92400e', accentColor: '#fef3c7', summary: 'Milkman Dead journeys southward to uncover ancestral myth and identity.' },
+      { id: 'mor-3', title: 'The Bluest Eye', year: '1970', pages: 216, color: '#1d4ed8', spineColor: '#1e3a8a', accentColor: '#dbeafe', summary: 'Pecola Breedlove dreams of blue eyes amidst devastating beauty standards.' },
+      { id: 'mor-4', title: 'Sula', year: '1973', pages: 174, color: '#047857', spineColor: '#065f46', accentColor: '#d1fae5', summary: 'Lifelong bond between two fiercely distinct women in the Bottom.' },
+      { id: 'mor-5', title: 'Jazz', year: '1992', pages: 229, color: '#6d28d9', spineColor: '#5b21b6', accentColor: '#ede9fe', summary: 'A Harlem love story paced like an improvised 1926 jazz composition.' },
+      { id: 'mor-6', title: 'Tar Baby', year: '1981', pages: 306, color: '#0e7490', spineColor: '#155e75', accentColor: '#cffafe', summary: 'Tensions over class, heritage, and independence on a Caribbean island.' },
+    ],
+  },
+  {
+    id: 'hesse',
+    author: 'HERMANN HESSE',
+    genre: 'Philosophical Quest Novels',
+    description: 'Poetic voyages into Eastern spirituality, duality of self, and aesthetic harmony.',
+    t: 0.845,
+    side: 'left',
+    books: [
+      { id: 'hes-1', title: 'Siddhartha', year: '1922', pages: 152, color: '#d97706', spineColor: '#b45309', accentColor: '#fef08a', summary: 'A young man seeks inner illumination along an eternal Indian river.' },
+      { id: 'hes-2', title: 'Steppenwolf', year: '1927', pages: 237, color: '#3730a3', spineColor: '#312e81', accentColor: '#e0e7ff', summary: 'Harry Haller discovers a magical theater liberating his fractured soul.' },
+      { id: 'hes-3', title: 'Demian', year: '1919', pages: 194, color: '#065f46', spineColor: '#064e3b', accentColor: '#a7f3d0', summary: 'Emil Sinclair awakens to moral autonomy under an enigmatic guide.' },
+      { id: 'hes-4', title: 'Glass Bead Game', year: '1943', pages: 568, color: '#0369a1', spineColor: '#075985', accentColor: '#bae6fd', summary: 'Master Josef Knecht tests pure intellect against the living world.' },
+      { id: 'hes-5', title: 'Narcissus Goldmund', year: '1930', pages: 312, color: '#be123c', spineColor: '#9f1239', accentColor: '#fecdd3', summary: 'Monastic asceticism meets sensual artistic wandering across medieval Europe.' },
+      { id: 'hes-6', title: 'Beneath the Wheel', year: '1906', pages: 175, color: '#7c3aed', spineColor: '#6d28d9', accentColor: '#f3e8ff', summary: 'Gifted youth crushed by relentless academic conformity.' },
+    ],
+  },
+  {
+    id: 'wilde',
+    author: 'OSCAR WILDE',
+    genre: 'Victorian Aestheticism & Wit',
+    description: 'Scintillating aphorisms, decadent beauty, and razor-sharp satire on double standards.',
+    t: 0.915,
+    side: 'right',
+    books: [
+      { id: 'wil-1', title: 'Dorian Gray', year: '1890', pages: 254, color: '#7f1d1d', spineColor: '#450a0a', accentColor: '#fde047', summary: 'A gilded youth stays ageless while a hidden portrait decays with his sins.' },
+      { id: 'wil-2', title: 'Being Earnest', year: '1895', pages: 108, color: '#15803d', spineColor: '#14532d', accentColor: '#fef08a', summary: 'Sparkling comedy of manners built around invented identities and wit.' },
+      { id: 'wil-3', title: 'De Profundis', year: '1905', pages: 176, color: '#1e3a8a', spineColor: '#172554', accentColor: '#dbeafe', summary: 'Luminous prison letter moving from bitterness into compassion.' },
+      { id: 'wil-4', title: 'The Happy Prince', year: '1888', pages: 128, color: '#b45309', spineColor: '#78350f', accentColor: '#fef3c7', summary: 'A gilded statue and a swallow give away every jewel to aid the poor.' },
+      { id: 'wil-5', title: 'An Ideal Husband', year: '1895', pages: 144, color: '#6d28d9', spineColor: '#4c1d95', accentColor: '#ede9fe', summary: 'Political blackmail puts an upright statesman’s past on trial.' },
+      { id: 'wil-6', title: 'Canterville Ghost', year: '1887', pages: 96, color: '#0f766e', spineColor: '#134e4a', accentColor: '#ccfbf1', summary: 'An ancient English ghost hopelessly fails to frighten modern tenants.' },
     ],
   },
 ];

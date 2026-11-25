@@ -653,87 +653,405 @@ function buildTaperedStemGeometry(
   return geo;
 }
 
-function SculptedBotanicalLeaf({
-  width,
-  length,
-  droop,
-  seed,
-  material,
-  position,
-  direction,
-  roll = 0,
-}: {
-  width: number;
-  length: number;
-  droop: number;
-  seed: number;
-  material: THREE.MeshPhysicalMaterial;
-  position: [number, number, number];
-  direction: [number, number, number];
-  roll?: number;
-}) {
-  const { geo, quaternion } = useMemo(() => {
-    const g = buildBotanicalLeafGeometry(width, length, droop, seed);
-    const dirVec = new THREE.Vector3(...direction).normalize();
-    const upVec = new THREE.Vector3(0, 1, 0);
-    const q = new THREE.Quaternion().setFromUnitVectors(upVec, dirVec);
-    if (roll !== 0) {
-      const qRoll = new THREE.Quaternion().setFromAxisAngle(dirVec, roll);
-      q.premultiply(qRoll);
+type SharedPothosAssets = {
+  outerPotGeo: THREE.BufferGeometry;
+  innerPotGeo: THREE.BufferGeometry;
+  soilMoundGeo: THREE.BufferGeometry;
+  ceramicMat: THREE.MeshPhysicalMaterial;
+  ceramicInnerMat: THREE.MeshPhysicalMaterial;
+  soilMat: THREE.MeshStandardMaterial;
+  petioleMat: THREE.MeshStandardMaterial;
+  vineMat: THREE.MeshStandardMaterial;
+  nodeCollarMat: THREE.MeshStandardMaterial;
+  pebbleGeoList: THREE.BufferGeometry[];
+  pebbleMats: THREE.MeshStandardMaterial[];
+  leafMaterials: Record<LeafVariant, THREE.MeshPhysicalMaterial>;
+  crownMeshes: Array<{
+    id: string;
+    petioleGeo: THREE.BufferGeometry;
+    leafGeo: THREE.BufferGeometry;
+    pos: [number, number, number];
+    q: THREE.Quaternion;
+    material: THREE.MeshPhysicalMaterial;
+  }>;
+  trailingVines: Array<{
+    id: string;
+    runnerGeo: THREE.BufferGeometry;
+    nodes: Array<{
+      id: string;
+      nodePos: THREE.Vector3;
+      petioleGeo: THREE.BufferGeometry;
+      leafPos: [number, number, number];
+      leafGeo: THREE.BufferGeometry;
+      leafQ: THREE.Quaternion;
+      material: THREE.MeshPhysicalMaterial;
+    }>;
+    tipLeaf: {
+      pos: [number, number, number];
+      leafGeo: THREE.BufferGeometry;
+      leafQ: THREE.Quaternion;
+      material: THREE.MeshPhysicalMaterial;
+    };
+  }>;
+};
+
+let cachedPothosAssets: SharedPothosAssets | null = null;
+
+function computeLeafQuaternion(direction: [number, number, number], roll = 0): THREE.Quaternion {
+  const dirVec = new THREE.Vector3(...direction).normalize();
+  const upVec = new THREE.Vector3(0, 1, 0);
+  const q = new THREE.Quaternion().setFromUnitVectors(upVec, dirVec);
+  if (roll !== 0) {
+    const qRoll = new THREE.Quaternion().setFromAxisAngle(dirVec, roll);
+    q.premultiply(qRoll);
+  }
+  return q;
+}
+
+function getSharedPothosAssets(potRadius: number, potHeight: number, soilY: number): SharedPothosAssets {
+  if (cachedPothosAssets) return cachedPothosAssets;
+
+  const variants: LeafVariant[] = [
+    'deepEmerald',
+    'variegatedGold',
+    'chartreuseMarble',
+    'matureOlive',
+    'youngShoot',
+  ];
+  const leafMaterials = {} as Record<LeafVariant, THREE.MeshPhysicalMaterial>;
+  variants.forEach((v, idx) => {
+    const maps = createLeafPBRSet(v, (idx + 1) * 37);
+    leafMaterials[v] = new THREE.MeshPhysicalMaterial({
+      map: maps.map,
+      normalMap: maps.normalMap,
+      normalScale: new THREE.Vector2(1.15, 1.15),
+      roughnessMap: maps.roughnessMap,
+      roughness: 0.34,
+      metalness: 0.01,
+      clearcoat: 0.48,
+      clearcoatRoughness: 0.22,
+      sheen: 0.28,
+      sheenColor: new THREE.Color('#9ed672'),
+      sheenRoughness: 0.65,
+      side: THREE.DoubleSide,
+    });
+  });
+
+  const soilMaps = createSoilPBRSet();
+  const soilMat = new THREE.MeshStandardMaterial({
+    map: soilMaps.map,
+    normalMap: soilMaps.normalMap,
+    normalScale: new THREE.Vector2(1.4, 1.4),
+    roughnessMap: soilMaps.roughnessMap,
+    roughness: 0.94,
+    metalness: 0.0,
+  });
+
+  const glazeMaps = createCeramicGlazeTexture();
+  const ceramicMat = new THREE.MeshPhysicalMaterial({
+    map: glazeMaps.map,
+    roughnessMap: glazeMaps.roughnessMap,
+    roughness: 0.26,
+    metalness: 0.01,
+    clearcoat: 0.72,
+    clearcoatRoughness: 0.14,
+    reflectivity: 0.65,
+  });
+
+  const ceramicInnerMat = new THREE.MeshPhysicalMaterial({
+    color: new THREE.Color('#ebe5d8'),
+    roughness: 0.42,
+    clearcoat: 0.35,
+    clearcoatRoughness: 0.28,
+  });
+
+  const petioleMat = new THREE.MeshStandardMaterial({ color: '#467632', roughness: 0.42, metalness: 0.02 });
+  const vineMat = new THREE.MeshStandardMaterial({ color: '#3c6b2c', roughness: 0.44, metalness: 0.02 });
+  const nodeCollarMat = new THREE.MeshStandardMaterial({ color: '#4e7838', roughness: 0.5 });
+
+  const pebbleGeoList = [0, 1, 2, 3].map((pIdx) => {
+    const g = new THREE.IcosahedronGeometry(1, 3);
+    const pos = g.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const vx = pos.getX(i);
+      const vy = pos.getY(i);
+      const vz = pos.getZ(i);
+      const n =
+        1 +
+        0.12 * Math.sin(vx * 3.1 + pIdx * 2.0) * Math.cos(vz * 2.7 + pIdx) +
+        0.07 * Math.cos(vy * 4.2 + pIdx * 1.3);
+      pos.setXYZ(i, vx * n, vy * 0.56 * n, vz * 0.82 * n);
     }
-    return { geo: g, quaternion: q };
-  }, [width, length, droop, seed, direction, roll]);
+    g.computeVertexNormals();
+    return g;
+  });
 
-  return (
-    <mesh
-      geometry={geo}
-      material={material}
-      position={position}
-      quaternion={quaternion}
-      castShadow
-      receiveShadow
-    />
-  );
+  const pebbleColors = ['#787066', '#948674', '#58534d', '#847b70', '#6b645c', '#9c8e7c', '#605a52', '#8f8375', '#544f49'];
+  const pebbleMats = pebbleColors.map((col) => new THREE.MeshStandardMaterial({ color: col, roughness: 0.68, metalness: 0.02 }));
+
+  const baseR = potRadius * 0.93;
+  const wall = 0.0052;
+  const outerPts: THREE.Vector2[] = [
+    new THREE.Vector2(0.0, 0.003),
+    new THREE.Vector2(baseR - 0.008, 0.003),
+    new THREE.Vector2(baseR - 0.006, 0.0),
+    new THREE.Vector2(baseR - 0.001, 0.0),
+    new THREE.Vector2(baseR, 0.004),
+    new THREE.Vector2(potRadius - 0.002, potHeight - 0.005),
+    new THREE.Vector2(potRadius, potHeight - 0.002),
+    new THREE.Vector2(potRadius - 0.0005, potHeight + 0.0025),
+    new THREE.Vector2(potRadius - wall * 0.5, potHeight + 0.0038),
+    new THREE.Vector2(potRadius - wall, potHeight + 0.0015),
+  ];
+  const outerPotGeo = new THREE.LatheGeometry(outerPts, 72).rotateY(Math.PI);
+
+  const innerPts: THREE.Vector2[] = [
+    new THREE.Vector2(potRadius - wall, potHeight + 0.0015),
+    new THREE.Vector2(potRadius - wall - 0.001, soilY - 0.025),
+  ];
+  const innerPotGeo = new THREE.LatheGeometry(innerPts, 64).rotateY(Math.PI);
+
+  const soilMoundGeo = new THREE.PlaneGeometry((potRadius - wall) * 2.02, (potRadius - wall) * 2.02, 32, 32);
+  soilMoundGeo.rotateX(-Math.PI / 2);
+  const gPos = soilMoundGeo.attributes.position;
+  const maxR = potRadius - wall + 0.0008;
+  for (let i = 0; i < gPos.count; i++) {
+    let x = gPos.getX(i);
+    let z = gPos.getZ(i);
+    const r = Math.sqrt(x * x + z * z);
+    if (r > maxR) {
+      const s = maxR / r;
+      x *= s;
+      z *= s;
+    }
+    const normR = Math.min(1, r / maxR);
+    const dome = (1 - normR * normR) * 0.007;
+    const organicBump = 0.0022 * Math.sin(x * 85) * Math.cos(z * 85) + 0.0012 * Math.sin((x + z) * 140);
+    gPos.setXYZ(i, x, dome + organicBump * (1 - normR * 0.6), z);
+  }
+  soilMoundGeo.computeVertexNormals();
+
+  const rootClusters: Array<[number, number, number]> = [
+    [-0.013, soilY - 0.003, 0.010],
+    [0.015, soilY - 0.003, -0.008],
+    [-0.004, soilY - 0.003, -0.015],
+  ];
+
+  const crownItems: Array<{
+    id: string;
+    root: [number, number, number];
+    base: [number, number, number];
+    dir: [number, number, number];
+    w: number;
+    len: number;
+    droop: number;
+    roll: number;
+    seed: number;
+    variant: LeafVariant;
+    arch: number;
+  }> = [];
+
+  for (let i = 0; i < 7; i++) {
+    const angle = (i * Math.PI * 2) / 7 + 0.25;
+    const root = rootClusters[i % 3];
+    const rBase = 0.016 + (i % 3) * 0.006;
+    const yBase = soilY + 0.028 + (i % 3) * 0.005;
+    crownItems.push({
+      id: `t1-${i}`,
+      root,
+      base: [rBase * Math.cos(angle), yBase, rBase * Math.sin(angle)],
+      dir: [0.54 * Math.cos(angle + 0.14), 0.78 - (i % 2) * 0.06, 0.54 * Math.sin(angle + 0.14)],
+      w: 0.052 + (i % 2) * 0.006,
+      len: 0.068 + (i % 3) * 0.005,
+      droop: 0.28,
+      roll: ((i % 3) - 1) * 0.22,
+      seed: 10 + i * 3,
+      variant: i % 3 === 0 ? 'chartreuseMarble' : 'youngShoot',
+      arch: 0.006,
+    });
+  }
+  for (let i = 0; i < 11; i++) {
+    const angle = (i * Math.PI * 2) / 11 + 0.48;
+    const root = rootClusters[i % 3];
+    const rBase = 0.032 + (i % 3) * 0.006;
+    const yBase = soilY + 0.024 + (i % 3) * 0.005;
+    const vCycle: LeafVariant[] = ['variegatedGold', 'deepEmerald', 'chartreuseMarble', 'matureOlive'];
+    crownItems.push({
+      id: `t2-${i}`,
+      root,
+      base: [rBase * Math.cos(angle), yBase, rBase * Math.sin(angle)],
+      dir: [0.66 * Math.cos(angle + 0.08), 0.72 + (i % 2) * 0.06, 0.66 * Math.sin(angle + 0.08)],
+      w: 0.064 + (i % 3) * 0.005,
+      len: 0.084 + (i % 3) * 0.006,
+      droop: 0.24,
+      roll: ((i % 5) - 2) * 0.14,
+      seed: 40 + i * 5,
+      variant: vCycle[i % vCycle.length],
+      arch: 0.007,
+    });
+  }
+  for (let i = 0; i < 12; i++) {
+    const angle = (i * Math.PI * 2) / 12 + 0.12;
+    const root = rootClusters[i % 3];
+    const rBase = 0.052 + (i % 3) * 0.005;
+    const yBase = soilY + 0.019 + (i % 2) * 0.004;
+    const vCycle: LeafVariant[] = ['deepEmerald', 'variegatedGold', 'matureOlive', 'chartreuseMarble'];
+    crownItems.push({
+      id: `t3-${i}`,
+      root,
+      base: [rBase * Math.cos(angle), yBase, rBase * Math.sin(angle)],
+      dir: [0.84 * Math.cos(angle + 0.06), 0.44 + (i % 2) * 0.05, 0.84 * Math.sin(angle + 0.06)],
+      w: 0.072 + (i % 3) * 0.004,
+      len: 0.092 + (i % 3) * 0.006,
+      droop: 0.28,
+      roll: ((i % 4) - 1.5) * 0.16,
+      seed: 80 + i * 7,
+      variant: vCycle[i % vCycle.length],
+      arch: 0.008,
+    });
+  }
+  for (let i = 0; i < 10; i++) {
+    const angle = (i * Math.PI * 2) / 10 + 0.32;
+    const root = rootClusters[i % 3];
+    const rBase = 0.071 + (i % 3) * 0.003;
+    const yBase = soilY + 0.017 + (i % 2) * 0.003;
+    const vCycle: LeafVariant[] = ['matureOlive', 'deepEmerald', 'variegatedGold'];
+    crownItems.push({
+      id: `t4-${i}`,
+      root,
+      base: [rBase * Math.cos(angle), yBase, rBase * Math.sin(angle)],
+      dir: [0.92 * Math.cos(angle), -0.12 - (i % 2) * 0.08, 0.92 * Math.sin(angle)],
+      w: 0.074 + (i % 2) * 0.005,
+      len: 0.095 + (i % 2) * 0.007,
+      droop: 0.32,
+      roll: ((i % 3) - 1) * 0.20,
+      seed: 130 + i * 11,
+      variant: vCycle[i % vCycle.length],
+      arch: 0.010,
+    });
+  }
+
+  const crownMeshes = crownItems.map((l) => {
+    const p0 = new THREE.Vector3(...l.root);
+    const p3 = new THREE.Vector3(...l.base);
+    const dVec = new THREE.Vector3(...l.dir).normalize();
+    const p1 = new THREE.Vector3(p0.x * 0.65 + p3.x * 0.35, Math.max(p0.y, p3.y) + l.arch * 0.5, p0.z * 0.65 + p3.z * 0.35);
+    const p2 = p3.clone().sub(dVec.clone().multiplyScalar(0.011));
+    return {
+      id: l.id,
+      petioleGeo: buildTaperedStemGeometry([p0, p1, p2, p3], 12, 0.0019, 0.0009, 7),
+      leafGeo: buildBotanicalLeafGeometry(l.w, l.len, l.droop, l.seed),
+      pos: l.base,
+      q: computeLeafQuaternion(l.dir, l.roll),
+      material: leafMaterials[l.variant],
+    };
+  });
+
+  const configs = [
+    { id: 'vine-fl', phi: 2.15, len: 0.72, count: 5, rootIdx: 0 },
+    { id: 'vine-r', phi: -0.65, len: 0.65, count: 4, rootIdx: 1 },
+    { id: 'vine-fc', phi: 1.18, len: 0.58, count: 4, rootIdx: 0 },
+    { id: 'vine-bl', phi: 3.65, len: 0.55, count: 4, rootIdx: 2 },
+  ];
+
+  const trailingVines = configs.map((cfg, cIdx) => {
+    const root = rootClusters[cfg.rootIdx];
+    const points = [
+      new THREE.Vector3(root[0], root[1], root[2]),
+      new THREE.Vector3(0.046 * Math.cos(cfg.phi - 0.08), 0.124, 0.046 * Math.sin(cfg.phi - 0.08)),
+      new THREE.Vector3(0.074 * Math.cos(cfg.phi), 0.135, 0.074 * Math.sin(cfg.phi)),
+      new THREE.Vector3(0.080 * Math.cos(cfg.phi + 0.04), 0.116 - 0.022 * cfg.len, 0.080 * Math.sin(cfg.phi + 0.04)),
+      new THREE.Vector3(0.085 * Math.cos(cfg.phi - 0.02), 0.104 - 0.048 * cfg.len, 0.085 * Math.sin(cfg.phi - 0.02)),
+      new THREE.Vector3(0.087 * Math.cos(cfg.phi + 0.05), 0.092 - 0.068 * cfg.len, 0.087 * Math.sin(cfg.phi + 0.05)),
+      new THREE.Vector3(0.086 * Math.cos(cfg.phi + 0.09), 0.082 - 0.075 * cfg.len, 0.086 * Math.sin(cfg.phi + 0.09)),
+    ];
+
+    const curve = new THREE.CatmullRomCurve3(points);
+    const runnerGeo = buildTaperedStemGeometry(points, 36, 0.0021, 0.0008, 8);
+    const vList: LeafVariant[] = ['deepEmerald', 'variegatedGold', 'chartreuseMarble', 'matureOlive'];
+    const nodes: SharedPothosAssets['trailingVines'][number]['nodes'] = [];
+
+    for (let i = 0; i < cfg.count; i++) {
+      const t = 0.30 + (i / cfg.count) * 0.60;
+      const pNode = curve.getPointAt(t);
+      const tangent = curve.getTangentAt(t);
+      const normal = new THREE.Vector3(pNode.x, 0, pNode.z).normalize();
+      const sideDir = new THREE.Vector3().crossVectors(tangent, normal).normalize();
+      const isLeft = i % 2 === 0;
+
+      const leafBase = pNode
+        .clone()
+        .add(tangent.clone().multiplyScalar(0.009))
+        .add(normal.clone().multiplyScalar(0.008))
+        .add(sideDir.clone().multiplyScalar(isLeft ? 0.010 : -0.010));
+
+      const outwardBias = 0.50 + t * 0.28;
+      const downBias = -0.80 + t * 0.22;
+      const leafDir = normal
+        .clone()
+        .multiplyScalar(outwardBias)
+        .add(new THREE.Vector3(0, downBias, 0))
+        .add(sideDir.clone().multiplyScalar(isLeft ? 0.30 : -0.30))
+        .normalize();
+
+      const petioleMid = pNode.clone().lerp(leafBase, 0.55).add(normal.clone().multiplyScalar(0.003));
+      const petioleGeo = buildTaperedStemGeometry([pNode, petioleMid, leafBase], 8, 0.0013, 0.0008, 6);
+
+      const frac = i / cfg.count;
+      const leafLen = 0.068 - frac * 0.022;
+      const leafW = 0.054 - frac * 0.016;
+      const dirArr: [number, number, number] = [leafDir.x, leafDir.y, leafDir.z];
+      const variant = i === cfg.count - 1 ? 'youngShoot' : vList[(cIdx + i) % vList.length];
+
+      nodes.push({
+        id: `${cfg.id}-node-${i}`,
+        nodePos: pNode,
+        petioleGeo,
+        leafPos: [leafBase.x, leafBase.y, leafBase.z],
+        leafGeo: buildBotanicalLeafGeometry(leafW, leafLen, 0.28, 200 + cIdx * 23 + i * 7),
+        leafQ: computeLeafQuaternion(dirArr, isLeft ? 0.28 : -0.28),
+        material: leafMaterials[variant],
+      });
+    }
+
+    const tipPos = curve.getPointAt(1.0);
+    const tipNormal = new THREE.Vector3(tipPos.x, 0, tipPos.z).normalize();
+    const tipDir = tipNormal.clone().multiplyScalar(0.75).add(new THREE.Vector3(0, -0.45, 0)).normalize();
+
+    return {
+      id: cfg.id,
+      runnerGeo,
+      nodes,
+      tipLeaf: {
+        pos: [tipPos.x, tipPos.y, tipPos.z] as [number, number, number],
+        leafGeo: buildBotanicalLeafGeometry(0.030, 0.044, 0.18, 300 + cIdx * 13),
+        leafQ: computeLeafQuaternion([tipDir.x, tipDir.y, tipDir.z], 0.1),
+        material: leafMaterials.youngShoot,
+      },
+    };
+  });
+
+  cachedPothosAssets = {
+    outerPotGeo,
+    innerPotGeo,
+    soilMoundGeo,
+    ceramicMat,
+    ceramicInnerMat,
+    soilMat,
+    petioleMat,
+    vineMat,
+    nodeCollarMat,
+    pebbleGeoList,
+    pebbleMats,
+    leafMaterials,
+    crownMeshes,
+    trailingVines,
+  };
+  return cachedPothosAssets;
 }
 
-function TaperedPetiole({
-  start,
-  end,
-  leafDir,
-  arch = 0.008,
-  rStart = 0.0019,
-  rEnd = 0.0009,
-}: {
-  start: [number, number, number];
-  end: [number, number, number];
-  leafDir: [number, number, number];
-  arch?: number;
-  rStart?: number;
-  rEnd?: number;
-}) {
-  const geo = useMemo(() => {
-    const p0 = new THREE.Vector3(...start);
-    const p3 = new THREE.Vector3(...end);
-    const dir = new THREE.Vector3(...leafDir).normalize();
-    // Curve midpoint arches upward, then enters leaf sinus aligned with leaf midrib!
-    const p1 = new THREE.Vector3(
-      p0.x * 0.65 + p3.x * 0.35,
-      Math.max(p0.y, p3.y) + arch * 0.5,
-      p0.z * 0.65 + p3.z * 0.35
-    );
-    const p2 = p3.clone().sub(dir.clone().multiplyScalar(0.011));
-    return buildTaperedStemGeometry([p0, p1, p2, p3], 12, rStart, rEnd, 7);
-  }, [start, end, leafDir, arch, rStart, rEnd]);
-
-  return (
-    <mesh geometry={geo} castShadow>
-      <meshStandardMaterial color="#467632" roughness={0.42} metalness={0.02} />
-    </mesh>
-  );
-}
-
-export function RealisticPlantPot3D({ autoRotate }: { autoRotate: boolean }) {
-  const groupRef = useRef<any>();
+export function RealisticPlantPot3D({ autoRotate = false }: { autoRotate?: boolean }) {
+  const groupRef = useRef<THREE.Group>(null!);
 
   useFrame((_, delta) => {
     if (autoRotate && groupRef.current) {
@@ -741,439 +1059,37 @@ export function RealisticPlantPot3D({ autoRotate }: { autoRotate: boolean }) {
     }
   });
 
-  // 1. GENERATE ALL PBR MATERIAL SETS ONCE
-  const { leafMaterials, soilMat, ceramicMat, ceramicInnerMat, pebbleGeoList } = useMemo(() => {
-    const variants: LeafVariant[] = [
-      'deepEmerald',
-      'variegatedGold',
-      'chartreuseMarble',
-      'matureOlive',
-      'youngShoot',
-    ];
-    const mats = {} as Record<LeafVariant, THREE.MeshPhysicalMaterial>;
-    variants.forEach((v, idx) => {
-      const maps = createLeafPBRSet(v, (idx + 1) * 37);
-      mats[v] = new THREE.MeshPhysicalMaterial({
-        map: maps.map,
-        normalMap: maps.normalMap,
-        normalScale: new THREE.Vector2(1.15, 1.15),
-        roughnessMap: maps.roughnessMap,
-        roughness: 0.34,
-        metalness: 0.01,
-        clearcoat: 0.48,
-        clearcoatRoughness: 0.22,
-        sheen: 0.28,
-        sheenColor: new THREE.Color('#9ed672'),
-        sheenRoughness: 0.65,
-        side: THREE.DoubleSide,
-      });
-    });
-
-    const soilMaps = createSoilPBRSet();
-    const sMat = new THREE.MeshStandardMaterial({
-      map: soilMaps.map,
-      normalMap: soilMaps.normalMap,
-      normalScale: new THREE.Vector2(1.4, 1.4),
-      roughnessMap: soilMaps.roughnessMap,
-      roughness: 0.94,
-      metalness: 0.0,
-    });
-
-    const glazeMaps = createCeramicGlazeTexture();
-    const cMat = new THREE.MeshPhysicalMaterial({
-      map: glazeMaps.map,
-      roughnessMap: glazeMaps.roughnessMap,
-      roughness: 0.26,
-      metalness: 0.01,
-      clearcoat: 0.72,
-      clearcoatRoughness: 0.14,
-      reflectivity: 0.65,
-    });
-
-    const cInnerMat = new THREE.MeshPhysicalMaterial({
-      color: new THREE.Color('#ebe5d8'),
-      roughness: 0.42,
-      clearcoat: 0.35,
-      clearcoatRoughness: 0.28,
-    });
-
-    // Sculpt smooth irregular organic river pebble geometries
-    const pGeos = [0, 1, 2, 3].map((pIdx) => {
-      const g = new THREE.IcosahedronGeometry(1, 3);
-      const pos = g.attributes.position;
-      for (let i = 0; i < pos.count; i++) {
-        const vx = pos.getX(i);
-        const vy = pos.getY(i);
-        const vz = pos.getZ(i);
-        const n =
-          1 +
-          0.12 * Math.sin(vx * 3.1 + pIdx * 2.0) * Math.cos(vz * 2.7 + pIdx) +
-          0.07 * Math.cos(vy * 4.2 + pIdx * 1.3);
-        pos.setXYZ(i, vx * n, vy * 0.56 * n, vz * 0.82 * n);
-      }
-      g.computeVertexNormals();
-      return g;
-    });
-
-    return {
-      leafMaterials: mats,
-      soilMat: sMat,
-      ceramicMat: cMat,
-      ceramicInnerMat: cInnerMat,
-      pebbleGeoList: pGeos,
-    };
-  }, []);
-
   const potRadius = 0.068;  // 13.6 cm rim diameter
   const potHeight = 0.125;  // 12.5 cm tall
   const soilY = potHeight - 0.015; // 11.0 cm
 
-  // 2. SMOOTH 72-SEGMENT GLAZED STONEWARE POT PROFILE (LatheGeometry)
-  const { outerPotGeo, innerPotGeo, soilMoundGeo } = useMemo(() => {
-    const baseR = potRadius * 0.93;
-    const wall = 0.0052;
+  const {
+    outerPotGeo,
+    innerPotGeo,
+    soilMoundGeo,
+    ceramicMat,
+    ceramicInnerMat,
+    soilMat,
+    petioleMat,
+    vineMat,
+    nodeCollarMat,
+    pebbleGeoList,
+    pebbleMats,
+    crownMeshes,
+    trailingVines,
+  } = useMemo(() => getSharedPothosAssets(potRadius, potHeight, soilY), [potRadius, potHeight, soilY]);
 
-    // Outer profile: recessed stoneware foot -> subtle flared wall -> smooth rounded lip -> inner rim drop
-    const outerPts: THREE.Vector2[] = [
-      new THREE.Vector2(0.0, 0.003),
-      new THREE.Vector2(baseR - 0.008, 0.003),
-      new THREE.Vector2(baseR - 0.006, 0.0),
-      new THREE.Vector2(baseR - 0.001, 0.0),
-      new THREE.Vector2(baseR, 0.004),
-      new THREE.Vector2(potRadius - 0.002, potHeight - 0.005),
-      new THREE.Vector2(potRadius, potHeight - 0.002),
-      new THREE.Vector2(potRadius - 0.0005, potHeight + 0.0025),
-      new THREE.Vector2(potRadius - wall * 0.5, potHeight + 0.0038),
-      new THREE.Vector2(potRadius - wall, potHeight + 0.0015),
-    ];
-    const oGeo = new THREE.LatheGeometry(outerPts, 72);
-    // Preserve LatheGeometry's built-in smooth wrapped seam normals; rotate seam to back (-Z)
-    oGeo.rotateY(Math.PI);
-
-    // Inner pot wall descending smoothly below soil line
-    const innerPts: THREE.Vector2[] = [
-      new THREE.Vector2(potRadius - wall, potHeight + 0.0015),
-      new THREE.Vector2(potRadius - wall - 0.001, soilY - 0.025),
-    ];
-    const iGeo = new THREE.LatheGeometry(innerPts, 64);
-    iGeo.rotateY(Math.PI);
-
-    // 3D Mounded organic soil disc (higher around the 3 stem clusters, bumpy across surface)
-    const sGeo = new THREE.CircleGeometry(potRadius - wall + 0.0015, 48, 0, Math.PI * 2);
-    sGeo.rotateX(-Math.PI / 2);
-    // Subdivide radial rings via concentric cylinder top or displace existing vertices cleanly:
-    const moundGeo = new THREE.CylinderGeometry(
-      potRadius - wall + 0.0012,
-      potRadius - wall,
-      0.012,
-      48,
-      1,
-      false
-    );
-    // Replace top cap with high-detail organic mound grid
-    const gridGeo = new THREE.PlaneGeometry((potRadius - wall) * 2.02, (potRadius - wall) * 2.02, 32, 32);
-    gridGeo.rotateX(-Math.PI / 2);
-    const gPos = gridGeo.attributes.position;
-    const maxR = potRadius - wall + 0.0008;
-    for (let i = 0; i < gPos.count; i++) {
-      let x = gPos.getX(i);
-      let z = gPos.getZ(i);
-      const r = Math.sqrt(x * x + z * z);
-      if (r > maxR) {
-        const s = maxR / r;
-        x *= s;
-        z *= s;
-      }
-      const normR = Math.min(1, r / maxR);
-      const dome = (1 - normR * normR) * 0.007;
-      const organicBump =
-        0.0022 * Math.sin(x * 85) * Math.cos(z * 85) +
-        0.0012 * Math.sin((x + z) * 140);
-      gPos.setXYZ(i, x, dome + organicBump * (1 - normR * 0.6), z);
-    }
-    gridGeo.computeVertexNormals();
-    moundGeo.dispose();
-    sGeo.dispose();
-
-    return { outerPotGeo: oGeo, innerPotGeo: iGeo, soilMoundGeo: gridGeo };
-  }, [potRadius, potHeight, soilY]);
-
-  // 3. THREE ROOTED PLANT CLUSTERS INSIDE THE SOIL (Zero floating stick ring!)
-  const rootClusters = useMemo(
-    () => [
-      [-0.013, soilY - 0.003, 0.010] as [number, number, number],
-      [0.015, soilY - 0.003, -0.008] as [number, number, number],
-      [-0.004, soilY - 0.003, -0.015] as [number, number, number],
-    ],
-    [soilY]
-  );
-
-  // 4. DENSE BUSHY CROWN FOLIAGE (40 Unique Sculpted Leaves across 4 Tiers)
-  const crownLeaves = useMemo(() => {
-    const items: Array<{
-      id: string;
-      root: [number, number, number];
-      base: [number, number, number];
-      dir: [number, number, number];
-      w: number;
-      len: number;
-      droop: number;
-      roll: number;
-      seed: number;
-      variant: LeafVariant;
-      arch: number;
-    }> = [];
-
-    // Tier 1: Center Arching Tender Shoots (7 soft rounded heart leaves forming a natural dome)
-    for (let i = 0; i < 7; i++) {
-      const angle = (i * Math.PI * 2) / 7 + 0.25;
-      const root = rootClusters[i % 3];
-      const rBase = 0.016 + (i % 3) * 0.006;
-      const yBase = soilY + 0.028 + (i % 3) * 0.005;
-      const dir: [number, number, number] = [
-        0.54 * Math.cos(angle + 0.14),
-        0.78 - (i % 2) * 0.06,
-        0.54 * Math.sin(angle + 0.14),
-      ];
-      items.push({
-        id: `t1-${i}`,
-        root,
-        base: [rBase * Math.cos(angle), yBase, rBase * Math.sin(angle)],
-        dir,
-        w: 0.052 + (i % 2) * 0.006,
-        len: 0.068 + (i % 3) * 0.005,
-        droop: 0.28,
-        roll: ((i % 3) - 1) * 0.22,
-        seed: 10 + i * 3,
-        variant: i % 3 === 0 ? 'chartreuseMarble' : 'youngShoot',
-        arch: 0.006,
-      });
-    }
-
-    // Tier 2: Inner Canopy (11 lush heart leaves fanning at ~48°)
-    for (let i = 0; i < 11; i++) {
-      const angle = (i * Math.PI * 2) / 11 + 0.48;
-      const root = rootClusters[i % 3];
-      const rBase = 0.032 + (i % 3) * 0.006;
-      const yBase = soilY + 0.024 + (i % 3) * 0.005;
-      const dir: [number, number, number] = [
-        0.66 * Math.cos(angle + 0.08),
-        0.72 + (i % 2) * 0.06,
-        0.66 * Math.sin(angle + 0.08),
-      ];
-      const vCycle: LeafVariant[] = ['variegatedGold', 'deepEmerald', 'chartreuseMarble', 'matureOlive'];
-      items.push({
-        id: `t2-${i}`,
-        root,
-        base: [rBase * Math.cos(angle), yBase, rBase * Math.sin(angle)],
-        dir,
-        w: 0.064 + (i % 3) * 0.005,
-        len: 0.084 + (i % 3) * 0.006,
-        droop: 0.24,
-        roll: ((i % 5) - 2) * 0.14,
-        seed: 40 + i * 5,
-        variant: vCycle[i % vCycle.length],
-        arch: 0.007,
-      });
-    }
-
-    // Tier 3: Mid-Rim Canopy (12 broad leaves shielding the pot rim)
-    for (let i = 0; i < 12; i++) {
-      const angle = (i * Math.PI * 2) / 12 + 0.12;
-      const root = rootClusters[i % 3];
-      const rBase = 0.052 + (i % 3) * 0.005;
-      const yBase = soilY + 0.019 + (i % 2) * 0.004;
-      const dir: [number, number, number] = [
-        0.84 * Math.cos(angle + 0.06),
-        0.44 + (i % 2) * 0.05,
-        0.84 * Math.sin(angle + 0.06),
-      ];
-      const vCycle: LeafVariant[] = ['deepEmerald', 'variegatedGold', 'matureOlive', 'chartreuseMarble'];
-      items.push({
-        id: `t3-${i}`,
-        root,
-        base: [rBase * Math.cos(angle), yBase, rBase * Math.sin(angle)],
-        dir,
-        w: 0.072 + (i % 3) * 0.004,
-        len: 0.092 + (i % 3) * 0.006,
-        droop: 0.28,
-        roll: ((i % 4) - 1.5) * 0.16,
-        seed: 80 + i * 7,
-        variant: vCycle[i % vCycle.length],
-        arch: 0.008,
-      });
-    }
-
-    // Tier 4: Outer Rim-Draping Leaves (10 broad mature leaves softening the lip)
-    for (let i = 0; i < 10; i++) {
-      const angle = (i * Math.PI * 2) / 10 + 0.32;
-      const root = rootClusters[i % 3];
-      const rBase = 0.071 + (i % 3) * 0.003;
-      const yBase = soilY + 0.017 + (i % 2) * 0.003; // Clears potHeight=0.125 cleanly!
-      const dir: [number, number, number] = [
-        0.92 * Math.cos(angle),
-        -0.12 - (i % 2) * 0.08,
-        0.92 * Math.sin(angle),
-      ];
-      const vCycle: LeafVariant[] = ['matureOlive', 'deepEmerald', 'variegatedGold'];
-      items.push({
-        id: `t4-${i}`,
-        root,
-        base: [rBase * Math.cos(angle), yBase, rBase * Math.sin(angle)],
-        dir,
-        w: 0.074 + (i % 2) * 0.005,
-        len: 0.095 + (i % 2) * 0.007,
-        droop: 0.32,
-        roll: ((i % 3) - 1) * 0.20,
-        seed: 130 + i * 11,
-        variant: vCycle[i % vCycle.length],
-        arch: 0.010,
-      });
-    }
-
-    return items;
-  }, [rootClusters, soilY]);
-
-  // 5. FOUR NATURAL TRAILING VINE RUNNERS (All tips & lowest leaves stay cleanly above y=0 floor plane)
-  const trailingVines = useMemo(() => {
-    const configs = [
-      { id: 'vine-fl', phi: 2.15, len: 0.72, count: 5, rootIdx: 0 },
-      { id: 'vine-r', phi: -0.65, len: 0.65, count: 4, rootIdx: 1 },
-      { id: 'vine-fc', phi: 1.18, len: 0.58, count: 4, rootIdx: 0 },
-      { id: 'vine-bl', phi: 3.65, len: 0.55, count: 4, rootIdx: 2 },
-    ];
-
-    return configs.map((cfg, cIdx) => {
-      const root = rootClusters[cfg.rootIdx];
-      // Natural S-curve points clearing pot rim & terminating cleanly above table plane (y >= 0.028)
-      const points = [
-        new THREE.Vector3(root[0], root[1], root[2]),
-        new THREE.Vector3(0.046 * Math.cos(cfg.phi - 0.08), 0.124, 0.046 * Math.sin(cfg.phi - 0.08)),
-        new THREE.Vector3(0.074 * Math.cos(cfg.phi), 0.135, 0.074 * Math.sin(cfg.phi)), // Rim crest
-        new THREE.Vector3(
-          0.080 * Math.cos(cfg.phi + 0.04),
-          0.116 - 0.022 * cfg.len,
-          0.080 * Math.sin(cfg.phi + 0.04)
-        ),
-        new THREE.Vector3(
-          0.085 * Math.cos(cfg.phi - 0.02),
-          0.104 - 0.048 * cfg.len,
-          0.085 * Math.sin(cfg.phi - 0.02)
-        ),
-        new THREE.Vector3(
-          0.087 * Math.cos(cfg.phi + 0.05),
-          0.092 - 0.068 * cfg.len,
-          0.087 * Math.sin(cfg.phi + 0.05)
-        ),
-        new THREE.Vector3(
-          0.086 * Math.cos(cfg.phi + 0.09),
-          0.082 - 0.075 * cfg.len,
-          0.086 * Math.sin(cfg.phi + 0.09)
-        ),
-      ];
-
-      const curve = new THREE.CatmullRomCurve3(points);
-      const runnerGeo = buildTaperedStemGeometry(points, 36, 0.0021, 0.0008, 8);
-
-      const nodes: Array<{
-        id: string;
-        nodePos: THREE.Vector3;
-        petioleGeo: THREE.BufferGeometry;
-        leafPos: [number, number, number];
-        leafDir: [number, number, number];
-        w: number;
-        len: number;
-        roll: number;
-        seed: number;
-        variant: LeafVariant;
-      }> = [];
-
-      const vList: LeafVariant[] = ['deepEmerald', 'variegatedGold', 'chartreuseMarble', 'matureOlive'];
-
-      for (let i = 0; i < cfg.count; i++) {
-        const t = 0.30 + (i / cfg.count) * 0.60;
-        const pNode = curve.getPointAt(t);
-        const tangent = curve.getTangentAt(t);
-        const normal = new THREE.Vector3(pNode.x, 0, pNode.z).normalize();
-        const sideDir = new THREE.Vector3().crossVectors(tangent, normal).normalize();
-        const isLeft = i % 2 === 0;
-
-        const leafBase = pNode
-          .clone()
-          .add(tangent.clone().multiplyScalar(0.009))
-          .add(normal.clone().multiplyScalar(0.008))
-          .add(sideDir.clone().multiplyScalar(isLeft ? 0.010 : -0.010));
-
-        // Near bottom of vine, leaves flare gently outward so they never dip into the floor plane
-        const outwardBias = 0.50 + t * 0.28;
-        const downBias = -0.80 + t * 0.22;
-        const leafDir = normal
-          .clone()
-          .multiplyScalar(outwardBias)
-          .add(new THREE.Vector3(0, downBias, 0))
-          .add(sideDir.clone().multiplyScalar(isLeft ? 0.30 : -0.30))
-          .normalize();
-
-        const petioleMid = pNode
-          .clone()
-          .lerp(leafBase, 0.55)
-          .add(normal.clone().multiplyScalar(0.003));
-        const petioleGeo = buildTaperedStemGeometry(
-          [pNode, petioleMid, leafBase],
-          8,
-          0.0013,
-          0.0008,
-          6
-        );
-
-        const frac = i / cfg.count;
-        const leafLen = 0.068 - frac * 0.022;
-        const leafW = 0.054 - frac * 0.016;
-
-        nodes.push({
-          id: `${cfg.id}-node-${i}`,
-          nodePos: pNode,
-          petioleGeo,
-          leafPos: [leafBase.x, leafBase.y, leafBase.z],
-          leafDir: [leafDir.x, leafDir.y, leafDir.z],
-          w: leafW,
-          len: leafLen,
-          roll: isLeft ? 0.28 : -0.28,
-          seed: 200 + cIdx * 23 + i * 7,
-          variant: i === cfg.count - 1 ? 'youngShoot' : vList[(cIdx + i) % vList.length],
-        });
-      }
-
-      // Apical growing tip leaf angled gracefully outward & slightly down above table plane
-      const tipPos = curve.getPointAt(1.0);
-      const tipNormal = new THREE.Vector3(tipPos.x, 0, tipPos.z).normalize();
-      const tipDir = tipNormal.clone().multiplyScalar(0.75).add(new THREE.Vector3(0, -0.45, 0)).normalize();
-
-      return {
-        id: cfg.id,
-        runnerGeo,
-        nodes,
-        tipLeaf: {
-          pos: [tipPos.x, tipPos.y, tipPos.z] as [number, number, number],
-          dir: [tipDir.x, tipDir.y, tipDir.z] as [number, number, number],
-          seed: 300 + cIdx * 13,
-        },
-      };
-    });
-  }, [rootClusters]);
-
-  // 6. ORGANIC PEBBLES NESTLED IN THE SOIL MOUND
   const pebbles = useMemo(
     () => [
-      { pos: [-0.032, soilY + 0.001, 0.025], s: 0.0085, rot: [0.1, 0.5, 0.2], color: '#787066', g: 0 },
-      { pos: [0.028, soilY + 0.001, -0.026], s: 0.0072, rot: [-0.2, 1.1, 0.1], color: '#948674', g: 1 },
-      { pos: [-0.012, soilY + 0.002, -0.035], s: 0.0090, rot: [0.15, 2.3, -0.1], color: '#58534d', g: 2 },
-      { pos: [0.036, soilY + 0.001, 0.018], s: 0.0068, rot: [0.05, 0.8, 0.3], color: '#847b70', g: 3 },
-      { pos: [-0.036, soilY + 0.001, -0.016], s: 0.0075, rot: [-0.1, 1.9, 0.15], color: '#6b645c', g: 0 },
-      { pos: [0.014, soilY + 0.002, 0.038], s: 0.0078, rot: [0.2, 0.4, -0.2], color: '#9c8e7c', g: 1 },
-      { pos: [0.004, soilY + 0.004, 0.002], s: 0.0062, rot: [0.1, 2.7, 0.05], color: '#605a52', g: 2 },
-      { pos: [-0.022, soilY + 0.002, 0.038], s: 0.0058, rot: [0.0, 1.2, 0.1], color: '#8f8375', g: 3 },
-      { pos: [0.042, soilY, -0.005], s: 0.0064, rot: [0.2, 0.9, -0.1], color: '#544f49', g: 0 },
+      { pos: [-0.032, soilY + 0.001, 0.025], s: 0.0085, rot: [0.1, 0.5, 0.2], g: 0 },
+      { pos: [0.028, soilY + 0.001, -0.026], s: 0.0072, rot: [-0.2, 1.1, 0.1], g: 1 },
+      { pos: [-0.012, soilY + 0.002, -0.035], s: 0.0090, rot: [0.15, 2.3, -0.1], g: 2 },
+      { pos: [0.036, soilY + 0.001, 0.018], s: 0.0068, rot: [0.05, 0.8, 0.3], g: 3 },
+      { pos: [-0.036, soilY + 0.001, -0.016], s: 0.0075, rot: [-0.1, 1.9, 0.15], g: 0 },
+      { pos: [0.014, soilY + 0.002, 0.038], s: 0.0078, rot: [0.2, 0.4, -0.2], g: 1 },
+      { pos: [0.004, soilY + 0.004, 0.002], s: 0.0062, rot: [0.1, 2.7, 0.05], g: 2 },
+      { pos: [-0.022, soilY + 0.002, 0.038], s: 0.0058, rot: [0.0, 1.2, 0.1], g: 3 },
+      { pos: [0.042, soilY, -0.005], s: 0.0064, rot: [0.2, 0.9, -0.1], g: 0 },
     ],
     [soilY]
   );
@@ -1198,35 +1114,27 @@ export function RealisticPlantPot3D({ autoRotate }: { autoRotate: boolean }) {
           <mesh
             key={`pebble-${idx}`}
             geometry={pebbleGeoList[pb.g]}
+            material={pebbleMats[idx]}
             position={pb.pos as [number, number, number]}
             rotation={pb.rot as [number, number, number]}
             scale={[pb.s, pb.s, pb.s]}
             castShadow
             receiveShadow
-          >
-            <meshStandardMaterial color={pb.color} roughness={0.68} metalness={0.02} />
-          </mesh>
+          />
         ))}
       </group>
 
       {/* 2. DENSE CROWN FOLIAGE (40 Unique Sculpted Heart Leaves + Rooted Tapered Petioles) */}
-      {crownLeaves.map((leaf) => (
+      {crownMeshes.map((leaf) => (
         <group key={leaf.id}>
-          <TaperedPetiole
-            start={leaf.root}
-            end={leaf.base}
-            leafDir={leaf.dir}
-            arch={leaf.arch}
-          />
-          <SculptedBotanicalLeaf
-            width={leaf.w}
-            length={leaf.len}
-            droop={leaf.droop}
-            seed={leaf.seed}
-            material={leafMaterials[leaf.variant]}
-            position={leaf.base}
-            direction={leaf.dir}
-            roll={leaf.roll}
+          <mesh geometry={leaf.petioleGeo} material={petioleMat} castShadow />
+          <mesh
+            geometry={leaf.leafGeo}
+            material={leaf.material}
+            position={leaf.pos}
+            quaternion={leaf.q}
+            castShadow
+            receiveShadow
           />
         </group>
       ))}
@@ -1234,46 +1142,34 @@ export function RealisticPlantPot3D({ autoRotate }: { autoRotate: boolean }) {
       {/* 3. CASCADING VINE RUNNERS (Tapered Vines, Nodes, Acute Petioles, Apical Shoots) */}
       {trailingVines.map((vine) => (
         <group key={vine.id}>
-          <mesh geometry={vine.runnerGeo} castShadow>
-            <meshStandardMaterial color="#3c6b2c" roughness={0.44} metalness={0.02} />
-          </mesh>
+          <mesh geometry={vine.runnerGeo} material={vineMat} castShadow />
 
           {vine.nodes.map((n) => (
             <group key={n.id}>
-              {/* Subtle swollen botanical node collar */}
-              <mesh position={[n.nodePos.x, n.nodePos.y, n.nodePos.z]}>
+              <mesh position={[n.nodePos.x, n.nodePos.y, n.nodePos.z]} material={nodeCollarMat}>
                 <sphereGeometry args={[0.0022, 8, 6]} />
-                <meshStandardMaterial color="#4e7838" roughness={0.5} />
               </mesh>
 
-              {/* Smooth curved petiole feeding into heart sinus */}
-              <mesh geometry={n.petioleGeo} castShadow>
-                <meshStandardMaterial color="#467632" roughness={0.42} />
-              </mesh>
+              <mesh geometry={n.petioleGeo} material={petioleMat} castShadow />
 
-              <SculptedBotanicalLeaf
-                width={n.w}
-                length={n.len}
-                droop={0.28}
-                seed={n.seed}
-                material={leafMaterials[n.variant]}
+              <mesh
+                geometry={n.leafGeo}
+                material={n.material}
                 position={n.leafPos}
-                direction={n.leafDir}
-                roll={n.roll}
+                quaternion={n.leafQ}
+                castShadow
+                receiveShadow
               />
             </group>
           ))}
 
-          {/* Tender young leaf unfolding directly at growing vine tip */}
-          <SculptedBotanicalLeaf
-            width={0.030}
-            length={0.044}
-            droop={0.18}
-            seed={vine.tipLeaf.seed}
-            material={leafMaterials.youngShoot}
+          <mesh
+            geometry={vine.tipLeaf.leafGeo}
+            material={vine.tipLeaf.material}
             position={vine.tipLeaf.pos}
-            direction={vine.tipLeaf.dir}
-            roll={0.1}
+            quaternion={vine.tipLeaf.leafQ}
+            castShadow
+            receiveShadow
           />
         </group>
       ))}

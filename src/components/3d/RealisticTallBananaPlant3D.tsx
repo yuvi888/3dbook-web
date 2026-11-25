@@ -255,8 +255,165 @@ function buildBananaLeafGeometry(
   return geo;
 }
 
-export function RealisticTallBananaPlant3D({ autoRotate }: { autoRotate: boolean }) {
-  const groupRef = useRef<any>();
+type SharedBananaAssets = {
+  leafMats: Record<'mature' | 'fresh' | 'young', THREE.MeshPhysicalMaterial>;
+  potMat: THREE.MeshPhysicalMaterial;
+  potInnerMat: THREE.MeshStandardMaterial;
+  soilMat: THREE.MeshStandardMaterial;
+  stemMat: THREE.MeshStandardMaterial;
+  outerPotGeo: THREE.BufferGeometry;
+  innerPotGeo: THREE.BufferGeometry;
+  soilGeo: THREE.BufferGeometry;
+  pseudostemMeshes: THREE.BufferGeometry[];
+  leafEntries: Array<{
+    id: string;
+    petioleGeo: THREE.BufferGeometry;
+    leafGeo: THREE.BufferGeometry;
+    pos: [number, number, number];
+    q: THREE.Quaternion;
+    tone: 'mature' | 'fresh' | 'young';
+  }>;
+};
+
+let cachedBananaAssets: SharedBananaAssets | null = null;
+
+function getSharedBananaAssets(potRadius: number, potHeight: number, soilY: number): SharedBananaAssets {
+  if (cachedBananaAssets) return cachedBananaAssets;
+
+  const mature = createBananaLeafPBR('mature');
+  const fresh = createBananaLeafPBR('fresh');
+  const young = createBananaLeafPBR('young');
+
+  const makeLeafMat = (m: { map: THREE.CanvasTexture; normalMap: THREE.CanvasTexture }) =>
+    new THREE.MeshPhysicalMaterial({
+      map: m.map,
+      normalMap: m.normalMap,
+      normalScale: new THREE.Vector2(1.2, 1.2),
+      roughness: 0.32,
+      metalness: 0.01,
+      clearcoat: 0.44,
+      clearcoatRoughness: 0.24,
+      sheen: 0.24,
+      sheenColor: new THREE.Color('#95ce68'),
+      side: THREE.DoubleSide,
+    });
+
+  const pMaps = createWhiteCeramicPlanterTexture();
+  const pMat = new THREE.MeshPhysicalMaterial({
+    map: pMaps.map,
+    normalMap: pMaps.normalMap,
+    normalScale: new THREE.Vector2(0.7, 0.7),
+    roughness: 0.45,
+    metalness: 0.01,
+    clearcoat: 0.24,
+    clearcoatRoughness: 0.34,
+  });
+  const pInMat = new THREE.MeshStandardMaterial({ color: '#e0dbd0', roughness: 0.68 });
+
+  const sMaps = createRichSoilPBR(2.4);
+  const sMat = new THREE.MeshStandardMaterial({
+    map: sMaps.map,
+    normalMap: sMaps.normalMap,
+    normalScale: new THREE.Vector2(1.5, 1.5),
+    roughness: 0.94,
+  });
+
+  const stMat = new THREE.MeshStandardMaterial({ color: '#4d7332', roughness: 0.48 });
+
+  const wall = 0.014;
+  const baseR = potRadius * 0.78;
+  const outerPts = [
+    new THREE.Vector2(0, 0.008),
+    new THREE.Vector2(baseR - 0.01, 0.008),
+    new THREE.Vector2(baseR, 0),
+    new THREE.Vector2(baseR + 0.004, 0.025),
+    new THREE.Vector2(potRadius - 0.006, potHeight * 0.55),
+    new THREE.Vector2(potRadius, potHeight - 0.022),
+    new THREE.Vector2(potRadius + 0.003, potHeight - 0.010),
+    new THREE.Vector2(potRadius - wall * 0.4, potHeight + 0.006),
+    new THREE.Vector2(potRadius - wall, potHeight),
+  ];
+  const oGeo = new THREE.LatheGeometry(outerPts, 64).rotateY(Math.PI);
+
+  const innerPts = [
+    new THREE.Vector2(potRadius - wall, potHeight),
+    new THREE.Vector2(potRadius - wall - 0.004, soilY - 0.05),
+  ];
+  const iGeo = new THREE.LatheGeometry(innerPts, 48).rotateY(Math.PI);
+  const soGeo = buildSoilMoundGeometry(potRadius - wall + 0.002, 0.022);
+
+  const stalks = [
+    { root: new THREE.Vector3(-0.022, soilY - 0.01, 0.015), top: new THREE.Vector3(-0.035, 0.92, 0.025), rB: 0.032, rT: 0.017 },
+    { root: new THREE.Vector3(0.032, soilY - 0.01, -0.012), top: new THREE.Vector3(0.048, 0.78, -0.018), rB: 0.026, rT: 0.014 },
+    { root: new THREE.Vector3(-0.010, soilY - 0.01, -0.030), top: new THREE.Vector3(-0.015, 0.64, -0.042), rB: 0.022, rT: 0.012 },
+  ];
+  const pseudoMeshes = stalks.map((s) => {
+    const mid = s.root.clone().lerp(s.top, 0.5).add(new THREE.Vector3(0.008, 0, 0.008));
+    return buildTaperedTube([s.root, mid, s.top], 16, s.rB, s.rT, 12, false);
+  });
+
+  const leafSpecs = [
+    { stalk: 0, hFrac: 0.98, angle: 0.5, reach: 0.16, hLift: 0.28, w: 0.22, len: 0.56, droop: 0.24, dirY: 0.76, tone: 'young' as const, splits: [] },
+    { stalk: 0, hFrac: 0.94, angle: 2.7, reach: 0.22, hLift: 0.22, w: 0.26, len: 0.62, droop: 0.30, dirY: 0.62, tone: 'fresh' as const, splits: [{ vPos: 0.62, side: 1 as const }] },
+    { stalk: 0, hFrac: 0.88, angle: 4.9, reach: 0.25, hLift: 0.16, w: 0.28, len: 0.66, droop: 0.34, dirY: 0.50, tone: 'fresh' as const, splits: [{ vPos: 0.48, side: -1 as const }] },
+    { stalk: 0, hFrac: 0.78, angle: 1.5, reach: 0.26, hLift: 0.10, w: 0.29, len: 0.68, droop: 0.38, dirY: 0.36, tone: 'mature' as const, splits: [{ vPos: 0.38, side: 1 as const }, { vPos: 0.70, side: -1 as const }] },
+    { stalk: 0, hFrac: 0.68, angle: 3.8, reach: 0.24, hLift: 0.05, w: 0.27, len: 0.62, droop: 0.42, dirY: 0.24, tone: 'mature' as const, splits: [{ vPos: 0.55, side: 1 as const }] },
+    { stalk: 1, hFrac: 0.96, angle: -0.4, reach: 0.18, hLift: 0.22, w: 0.23, len: 0.54, droop: 0.28, dirY: 0.68, tone: 'young' as const, splits: [] },
+    { stalk: 1, hFrac: 0.88, angle: 0.9, reach: 0.22, hLift: 0.14, w: 0.26, len: 0.60, droop: 0.34, dirY: 0.48, tone: 'fresh' as const, splits: [{ vPos: 0.52, side: -1 as const }] },
+    { stalk: 1, hFrac: 0.76, angle: -1.6, reach: 0.24, hLift: 0.08, w: 0.27, len: 0.62, droop: 0.38, dirY: 0.32, tone: 'mature' as const, splits: [{ vPos: 0.42, side: 1 as const }] },
+    { stalk: 1, hFrac: 0.68, angle: 5.5, reach: 0.22, hLift: 0.11, w: 0.24, len: 0.55, droop: 0.32, dirY: 0.38, tone: 'mature' as const, splits: [{ vPos: 0.62, side: -1 as const }] },
+    { stalk: 2, hFrac: 0.96, angle: 3.3, reach: 0.16, hLift: 0.18, w: 0.21, len: 0.48, droop: 0.28, dirY: 0.62, tone: 'fresh' as const, splits: [] },
+    { stalk: 2, hFrac: 0.86, angle: 4.3, reach: 0.20, hLift: 0.10, w: 0.24, len: 0.52, droop: 0.34, dirY: 0.42, tone: 'mature' as const, splits: [{ vPos: 0.46, side: 1 as const }] },
+    { stalk: 2, hFrac: 0.74, angle: 2.3, reach: 0.20, hLift: 0.06, w: 0.23, len: 0.50, droop: 0.38, dirY: 0.28, tone: 'mature' as const, splits: [{ vPos: 0.58, side: -1 as const }] },
+  ];
+
+  const lEntries = leafSpecs.map((sp, idx) => {
+    const s = stalks[sp.stalk];
+    const stemOrigin = s.root.clone().lerp(s.top, sp.hFrac);
+    const leafBase = new THREE.Vector3(
+      stemOrigin.x + Math.cos(sp.angle) * sp.reach,
+      stemOrigin.y + sp.hLift,
+      stemOrigin.z + Math.sin(sp.angle) * sp.reach
+    );
+    const dirVec = new THREE.Vector3(Math.cos(sp.angle), sp.dirY, Math.sin(sp.angle)).normalize();
+    const petioleMid = stemOrigin.clone().lerp(leafBase, 0.5).add(new THREE.Vector3(0, 0.04, 0));
+    const petiolePre = leafBase.clone().sub(dirVec.clone().multiplyScalar(0.05));
+    const petioleGeo = buildTaperedTube([stemOrigin, petioleMid, petiolePre, leafBase], 14, 0.011, 0.0055, 8);
+
+    const leafGeo = buildBananaLeafGeometry(sp.w, sp.len, sp.droop, 17 + idx * 11, sp.splits);
+    const q = orientLeafSkyward(dirVec, ((idx % 3) - 1) * 0.16);
+
+    return {
+      id: `banana-leaf-${idx}`,
+      petioleGeo,
+      leafGeo,
+      pos: [leafBase.x, leafBase.y, leafBase.z] as [number, number, number],
+      q,
+      tone: sp.tone,
+    };
+  });
+
+  cachedBananaAssets = {
+    leafMats: {
+      mature: makeLeafMat(mature),
+      fresh: makeLeafMat(fresh),
+      young: makeLeafMat(young),
+    },
+    potMat: pMat,
+    potInnerMat: pInMat,
+    soilMat: sMat,
+    stemMat: stMat,
+    outerPotGeo: oGeo,
+    innerPotGeo: iGeo,
+    soilGeo: soGeo,
+    pseudostemMeshes: pseudoMeshes,
+    leafEntries: lEntries,
+  };
+  return cachedBananaAssets;
+}
+
+export function RealisticTallBananaPlant3D({ autoRotate = false }: { autoRotate?: boolean }) {
+  const groupRef = useRef<THREE.Group>(null!);
 
   useFrame((_, delta) => {
     if (autoRotate && groupRef.current) {
@@ -279,145 +436,7 @@ export function RealisticTallBananaPlant3D({ autoRotate }: { autoRotate: boolean
     soilGeo,
     pseudostemMeshes,
     leafEntries,
-  } = useMemo(() => {
-    const mature = createBananaLeafPBR('mature');
-    const fresh = createBananaLeafPBR('fresh');
-    const young = createBananaLeafPBR('young');
-
-    const makeLeafMat = (m: { map: THREE.CanvasTexture; normalMap: THREE.CanvasTexture }) =>
-      new THREE.MeshPhysicalMaterial({
-        map: m.map,
-        normalMap: m.normalMap,
-        normalScale: new THREE.Vector2(1.2, 1.2),
-        roughness: 0.32,
-        metalness: 0.01,
-        clearcoat: 0.44,
-        clearcoatRoughness: 0.24,
-        sheen: 0.24,
-        sheenColor: new THREE.Color('#95ce68'),
-        side: THREE.DoubleSide,
-      });
-
-    const pMaps = createWhiteCeramicPlanterTexture();
-    const pMat = new THREE.MeshPhysicalMaterial({
-      map: pMaps.map,
-      normalMap: pMaps.normalMap,
-      normalScale: new THREE.Vector2(0.7, 0.7),
-      roughness: 0.45,
-      metalness: 0.01,
-      clearcoat: 0.24,
-      clearcoatRoughness: 0.34,
-    });
-    const pInMat = new THREE.MeshStandardMaterial({ color: '#e0dbd0', roughness: 0.68 });
-
-    const sMaps = createRichSoilPBR(2.4);
-    const sMat = new THREE.MeshStandardMaterial({
-      map: sMaps.map,
-      normalMap: sMaps.normalMap,
-      normalScale: new THREE.Vector2(1.5, 1.5),
-      roughness: 0.94,
-    });
-
-    const stMat = new THREE.MeshStandardMaterial({ color: '#4d7332', roughness: 0.48 });
-
-    // Architectural Ribbed Tall Tapered Cylinder Planter
-    const wall = 0.014;
-    const baseR = potRadius * 0.78;
-    const outerPts = [
-      new THREE.Vector2(0, 0.008),
-      new THREE.Vector2(baseR - 0.01, 0.008),
-      new THREE.Vector2(baseR, 0),
-      new THREE.Vector2(baseR + 0.004, 0.025),
-      new THREE.Vector2(potRadius - 0.006, potHeight * 0.55),
-      new THREE.Vector2(potRadius, potHeight - 0.022),
-      new THREE.Vector2(potRadius + 0.003, potHeight - 0.010),
-      new THREE.Vector2(potRadius - wall * 0.4, potHeight + 0.006),
-      new THREE.Vector2(potRadius - wall, potHeight),
-    ];
-    const oGeo = new THREE.LatheGeometry(outerPts, 64).rotateY(Math.PI);
-
-    const innerPts = [
-      new THREE.Vector2(potRadius - wall, potHeight),
-      new THREE.Vector2(potRadius - wall - 0.004, soilY - 0.05),
-    ];
-    const iGeo = new THREE.LatheGeometry(innerPts, 48).rotateY(Math.PI);
-    const soGeo = buildSoilMoundGeometry(potRadius - wall + 0.002, 0.022);
-
-    // 3 Overlapping Banana Pseudostem Stalks rising cleanly out of soil
-    const stalks = [
-      { root: new THREE.Vector3(-0.022, soilY - 0.01, 0.015), top: new THREE.Vector3(-0.035, 0.92, 0.025), rB: 0.032, rT: 0.017 },
-      { root: new THREE.Vector3(0.032, soilY - 0.01, -0.012), top: new THREE.Vector3(0.048, 0.78, -0.018), rB: 0.026, rT: 0.014 },
-      { root: new THREE.Vector3(-0.010, soilY - 0.01, -0.030), top: new THREE.Vector3(-0.015, 0.64, -0.042), rB: 0.022, rT: 0.012 },
-    ];
-    const pseudoMeshes = stalks.map((s) => {
-      const mid = s.root.clone().lerp(s.top, 0.5).add(new THREE.Vector3(0.008, 0, 0.008));
-      return buildTaperedTube([s.root, mid, s.top], 16, s.rB, s.rT, 12, false);
-    });
-
-    // 13 Giant Tropical Banana Paddle Leaves radiating at tiered heights (0.66m to 1.62m)
-    const leafSpecs = [
-      // Tall center young shoots (stalk 0)
-      { stalk: 0, hFrac: 0.98, angle: 0.5, reach: 0.16, hLift: 0.28, w: 0.22, len: 0.56, droop: 0.24, dirY: 0.76, tone: 'young' as const, splits: [] },
-      { stalk: 0, hFrac: 0.94, angle: 2.7, reach: 0.22, hLift: 0.22, w: 0.26, len: 0.62, droop: 0.30, dirY: 0.62, tone: 'fresh' as const, splits: [{ vPos: 0.62, side: 1 as const }] },
-      { stalk: 0, hFrac: 0.88, angle: 4.9, reach: 0.25, hLift: 0.16, w: 0.28, len: 0.66, droop: 0.34, dirY: 0.50, tone: 'fresh' as const, splits: [{ vPos: 0.48, side: -1 as const }] },
-      { stalk: 0, hFrac: 0.78, angle: 1.5, reach: 0.26, hLift: 0.10, w: 0.29, len: 0.68, droop: 0.38, dirY: 0.36, tone: 'mature' as const, splits: [{ vPos: 0.38, side: 1 as const }, { vPos: 0.70, side: -1 as const }] },
-      { stalk: 0, hFrac: 0.68, angle: 3.8, reach: 0.24, hLift: 0.05, w: 0.27, len: 0.62, droop: 0.42, dirY: 0.24, tone: 'mature' as const, splits: [{ vPos: 0.55, side: 1 as const }] },
-
-      // Mid stalk 1
-      { stalk: 1, hFrac: 0.96, angle: -0.4, reach: 0.18, hLift: 0.22, w: 0.23, len: 0.54, droop: 0.28, dirY: 0.68, tone: 'young' as const, splits: [] },
-      { stalk: 1, hFrac: 0.88, angle: 0.9, reach: 0.22, hLift: 0.14, w: 0.26, len: 0.60, droop: 0.34, dirY: 0.48, tone: 'fresh' as const, splits: [{ vPos: 0.52, side: -1 as const }] },
-      { stalk: 1, hFrac: 0.76, angle: -1.6, reach: 0.24, hLift: 0.08, w: 0.27, len: 0.62, droop: 0.38, dirY: 0.32, tone: 'mature' as const, splits: [{ vPos: 0.42, side: 1 as const }] },
-      { stalk: 1, hFrac: 0.68, angle: 5.5, reach: 0.22, hLift: 0.11, w: 0.24, len: 0.55, droop: 0.32, dirY: 0.38, tone: 'mature' as const, splits: [{ vPos: 0.62, side: -1 as const }] },
-
-      // Lower fuller stalk 2
-      { stalk: 2, hFrac: 0.96, angle: 3.3, reach: 0.16, hLift: 0.18, w: 0.21, len: 0.48, droop: 0.28, dirY: 0.62, tone: 'fresh' as const, splits: [] },
-      { stalk: 2, hFrac: 0.86, angle: 4.3, reach: 0.20, hLift: 0.10, w: 0.24, len: 0.52, droop: 0.34, dirY: 0.42, tone: 'mature' as const, splits: [{ vPos: 0.46, side: 1 as const }] },
-      { stalk: 2, hFrac: 0.74, angle: 2.3, reach: 0.20, hLift: 0.06, w: 0.23, len: 0.50, droop: 0.38, dirY: 0.28, tone: 'mature' as const, splits: [{ vPos: 0.58, side: -1 as const }] },
-    ];
-
-    const lEntries = leafSpecs.map((sp, idx) => {
-      const s = stalks[sp.stalk];
-      const stemOrigin = s.root.clone().lerp(s.top, sp.hFrac);
-      const leafBase = new THREE.Vector3(
-        stemOrigin.x + Math.cos(sp.angle) * sp.reach,
-        stemOrigin.y + sp.hLift,
-        stemOrigin.z + Math.sin(sp.angle) * sp.reach
-      );
-      const dirVec = new THREE.Vector3(Math.cos(sp.angle), sp.dirY, Math.sin(sp.angle)).normalize();
-      const petioleMid = stemOrigin.clone().lerp(leafBase, 0.5).add(new THREE.Vector3(0, 0.04, 0));
-      const petiolePre = leafBase.clone().sub(dirVec.clone().multiplyScalar(0.05));
-      const petioleGeo = buildTaperedTube([stemOrigin, petioleMid, petiolePre, leafBase], 14, 0.011, 0.0055, 8);
-
-      const leafGeo = buildBananaLeafGeometry(sp.w, sp.len, sp.droop, 17 + idx * 11, sp.splits);
-      const q = orientLeafSkyward(dirVec, ((idx % 3) - 1) * 0.16);
-
-      return {
-        id: `banana-leaf-${idx}`,
-        petioleGeo,
-        leafGeo,
-        pos: [leafBase.x, leafBase.y, leafBase.z] as [number, number, number],
-        q,
-        tone: sp.tone,
-      };
-    });
-
-    return {
-      leafMats: {
-        mature: makeLeafMat(mature),
-        fresh: makeLeafMat(fresh),
-        young: makeLeafMat(young),
-      },
-      potMat: pMat,
-      potInnerMat: pInMat,
-      soilMat: sMat,
-      stemMat: stMat,
-      outerPotGeo: oGeo,
-      innerPotGeo: iGeo,
-      soilGeo: soGeo,
-      pseudostemMeshes: pseudoMeshes,
-      leafEntries: lEntries,
-    };
-  }, [potRadius, potHeight, soilY]);
+  } = useMemo(() => getSharedBananaAssets(potRadius, potHeight, soilY), [potRadius, potHeight, soilY]);
 
   return (
     <group ref={groupRef} position={[0, -0.76, 0]}>

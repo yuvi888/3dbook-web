@@ -389,8 +389,234 @@ function FlowerBlossom({
   );
 }
 
-export function RealisticSmallFlowerPot3D({ autoRotate }: { autoRotate: boolean }) {
-  const groupRef = useRef<any>();
+type SharedFlowerPotAssets = {
+  leafMats: Record<'deep' | 'mid' | 'young', THREE.MeshPhysicalMaterial>;
+  petalMat: THREE.MeshPhysicalMaterial;
+  stamenMat: THREE.MeshStandardMaterial;
+  soilMat: THREE.MeshStandardMaterial;
+  potMat: THREE.MeshPhysicalMaterial;
+  potInnerMat: THREE.MeshStandardMaterial;
+  stemLeafMat: THREE.MeshStandardMaterial;
+  stemFlowerMat: THREE.MeshStandardMaterial;
+  outerPotGeo: THREE.BufferGeometry;
+  innerPotGeo: THREE.BufferGeometry;
+  soilGeo: THREE.BufferGeometry;
+  leafMeshes: Array<{
+    id: string;
+    geo: THREE.BufferGeometry;
+    stemGeo: THREE.BufferGeometry;
+    pos: [number, number, number];
+    q: THREE.Quaternion;
+    mat: THREE.MeshPhysicalMaterial;
+  }>;
+  flowers: Array<{
+    pos: [number, number, number];
+    root: [number, number, number];
+    dir: [number, number, number];
+    scale: number;
+    isSpathe: boolean;
+  }>;
+  flowerStems: Array<{ id: string; geo: THREE.BufferGeometry }>;
+};
+
+let cachedFlowerPotAssets: SharedFlowerPotAssets | null = null;
+
+function getSharedFlowerPotAssets(potRadius: number, potHeight: number, soilY: number): SharedFlowerPotAssets {
+  if (cachedFlowerPotAssets) return cachedFlowerPotAssets;
+
+  const deep = createLanceLeafPBR('deep');
+  const mid = createLanceLeafPBR('mid');
+  const young = createLanceLeafPBR('young');
+
+  const makeLeafMat = (maps: { map: THREE.CanvasTexture; normalMap: THREE.CanvasTexture }) =>
+    new THREE.MeshPhysicalMaterial({
+      map: maps.map,
+      normalMap: maps.normalMap,
+      normalScale: new THREE.Vector2(1.1, 1.1),
+      roughness: 0.30,
+      metalness: 0.01,
+      clearcoat: 0.45,
+      clearcoatRoughness: 0.22,
+      sheen: 0.22,
+      sheenColor: new THREE.Color('#95d068'),
+      side: THREE.DoubleSide,
+    });
+
+  const leafMats = { deep: makeLeafMat(deep), mid: makeLeafMat(mid), young: makeLeafMat(young) };
+
+  const pMaps = createFlowerPetalPBR();
+  const petalMat = new THREE.MeshPhysicalMaterial({
+    map: pMaps.map,
+    normalMap: pMaps.normalMap,
+    normalScale: new THREE.Vector2(0.85, 0.85),
+    roughness: 0.42,
+    sheen: 0.55,
+    sheenColor: new THREE.Color('#fff9ed'),
+    sheenRoughness: 0.45,
+    side: THREE.DoubleSide,
+  });
+
+  const stamenMat = new THREE.MeshStandardMaterial({ color: new THREE.Color('#e3b84c'), roughness: 0.72 });
+  const stemLeafMat = new THREE.MeshStandardMaterial({ color: '#3c6b2d', roughness: 0.44 });
+  const stemFlowerMat = new THREE.MeshStandardMaterial({ color: '#4b7b35', roughness: 0.40 });
+
+  const soilMaps = createRichSoilPBR(1.4);
+  const soilMat = new THREE.MeshStandardMaterial({
+    map: soilMaps.map,
+    normalMap: soilMaps.normalMap,
+    normalScale: new THREE.Vector2(1.4, 1.4),
+    roughness: 0.94,
+  });
+
+  const clayTex = createFlutedClayPotTexture();
+  const potMat = new THREE.MeshPhysicalMaterial({
+    map: clayTex,
+    roughness: 0.48,
+    clearcoat: 0.25,
+    clearcoatRoughness: 0.35,
+  });
+  const potInnerMat = new THREE.MeshStandardMaterial({ color: new THREE.Color('#d6c6b2'), roughness: 0.65 });
+
+  const wall = 0.005;
+  const baseR = potRadius * 0.90;
+  const outerPts = [
+    new THREE.Vector2(0.0, 0.003),
+    new THREE.Vector2(baseR - 0.007, 0.003),
+    new THREE.Vector2(baseR, 0.002),
+    new THREE.Vector2(baseR + 0.001, 0.008),
+    new THREE.Vector2(potRadius, potHeight - 0.006),
+    new THREE.Vector2(potRadius + 0.001, potHeight),
+    new THREE.Vector2(potRadius - wall * 0.5, potHeight + 0.003),
+    new THREE.Vector2(potRadius - wall, potHeight + 0.001),
+  ];
+  const outerPotGeo = new THREE.LatheGeometry(outerPts, 72).rotateY(Math.PI);
+
+  const innerPts = [
+    new THREE.Vector2(potRadius - wall, potHeight + 0.001),
+    new THREE.Vector2(potRadius - wall - 0.001, soilY - 0.02),
+  ];
+  const innerPotGeo = new THREE.LatheGeometry(innerPts, 64).rotateY(Math.PI);
+  const soilGeo = buildSoilMoundGeometry(potRadius - wall + 0.0005, 0.007);
+
+  const roots: Array<[number, number, number]> = [
+    [-0.011, soilY - 0.003, 0.008],
+    [0.012, soilY - 0.003, -0.006],
+    [-0.003, soilY - 0.003, -0.012],
+  ];
+
+  const leaves: Array<{
+    id: string;
+    root: [number, number, number];
+    base: [number, number, number];
+    dir: [number, number, number];
+    w: number;
+    len: number;
+    droop: number;
+    roll: number;
+    seed: number;
+    matKey: 'deep' | 'mid' | 'young';
+  }> = [];
+
+  for (let i = 0; i < 8; i++) {
+    const a = (i * Math.PI * 2) / 8 + 0.2;
+    const rB = 0.014 + (i % 2) * 0.006;
+    const yB = soilY + 0.026 + (i % 3) * 0.005;
+    leaves.push({
+      id: `in-${i}`,
+      root: roots[i % 3],
+      base: [rB * Math.cos(a), yB, rB * Math.sin(a)],
+      dir: [0.42 * Math.cos(a), 0.88, 0.42 * Math.sin(a)],
+      w: 0.036,
+      len: 0.095 + (i % 3) * 0.01,
+      droop: 0.22,
+      roll: ((i % 3) - 1) * 0.2,
+      seed: 10 + i * 5,
+      matKey: i % 2 === 0 ? 'young' : 'mid',
+    });
+  }
+  for (let i = 0; i < 10; i++) {
+    const a = (i * Math.PI * 2) / 10 + 0.5;
+    const rB = 0.028 + (i % 3) * 0.006;
+    const yB = soilY + 0.020 + (i % 2) * 0.004;
+    leaves.push({
+      id: `mid-${i}`,
+      root: roots[i % 3],
+      base: [rB * Math.cos(a), yB, rB * Math.sin(a)],
+      dir: [0.72 * Math.cos(a), 0.65, 0.72 * Math.sin(a)],
+      w: 0.044,
+      len: 0.115 + (i % 2) * 0.012,
+      droop: 0.30,
+      roll: ((i % 4) - 1.5) * 0.16,
+      seed: 50 + i * 7,
+      matKey: i % 2 === 0 ? 'mid' : 'deep',
+    });
+  }
+  for (let i = 0; i < 10; i++) {
+    const a = (i * Math.PI * 2) / 10 + 0.15;
+    const rB = 0.042 + (i % 2) * 0.005;
+    const yB = soilY + 0.024;
+    leaves.push({
+      id: `out-${i}`,
+      root: roots[i % 3],
+      base: [rB * Math.cos(a), yB, rB * Math.sin(a)],
+      dir: [0.84 * Math.cos(a), 0.34 - (i % 2) * 0.06, 0.84 * Math.sin(a)],
+      w: 0.048,
+      len: 0.122 + (i % 3) * 0.008,
+      droop: 0.34,
+      roll: ((i % 3) - 1) * 0.16,
+      seed: 110 + i * 9,
+      matKey: 'deep',
+    });
+  }
+
+  const leafMeshes = leaves.map((l) => {
+    const geo = buildLanceLeafGeometry(l.w, l.len, l.droop, l.seed);
+    const dirVec = new THREE.Vector3(...l.dir).normalize();
+    const q = orientLeafSkyward(dirVec, l.roll);
+    const p0 = new THREE.Vector3(...l.root);
+    const p3 = new THREE.Vector3(...l.base);
+    const p1 = new THREE.Vector3(p0.x * 0.65 + p3.x * 0.35, Math.max(p0.y, p3.y) + 0.004, p0.z * 0.65 + p3.z * 0.35);
+    const p2 = p3.clone().sub(dirVec.clone().multiplyScalar(0.01));
+    const stemGeo = buildTaperedTube([p0, p1, p2, p3], 10, 0.0018, 0.0009, 6);
+    return { id: l.id, geo, stemGeo, pos: l.base, q, mat: leafMats[l.matKey] };
+  });
+
+  const flowers = [
+    { pos: [-0.024, soilY + 0.128, 0.022] as [number, number, number], root: [-0.008, soilY - 0.002, 0.008] as [number, number, number], dir: [-0.22, 0.94, 0.24] as [number, number, number], scale: 1.05, isSpathe: true },
+    { pos: [0.032, soilY + 0.115, 0.016] as [number, number, number], root: [0.010, soilY - 0.002, 0.004] as [number, number, number], dir: [0.30, 0.92, 0.20] as [number, number, number], scale: 0.96, isSpathe: false },
+    { pos: [-0.008, soilY + 0.145, -0.024] as [number, number, number], root: [-0.003, soilY - 0.002, -0.009] as [number, number, number], dir: [-0.08, 0.97, -0.22] as [number, number, number], scale: 1.0, isSpathe: true },
+    { pos: [0.022, soilY + 0.095, -0.034] as [number, number, number], root: [0.008, soilY - 0.002, -0.010] as [number, number, number], dir: [0.24, 0.88, -0.38] as [number, number, number], scale: 0.88, isSpathe: false },
+    { pos: [-0.044, soilY + 0.092, -0.010] as [number, number, number], root: [-0.012, soilY - 0.002, -0.004] as [number, number, number], dir: [-0.42, 0.88, -0.10] as [number, number, number], scale: 0.92, isSpathe: true },
+  ];
+
+  const flowerStems = flowers.map((f, idx) => {
+    const p0 = new THREE.Vector3(...f.root);
+    const p2 = new THREE.Vector3(...f.pos);
+    const p1 = new THREE.Vector3((p0.x + p2.x) * 0.45, (p0.y + p2.y) * 0.55, (p0.z + p2.z) * 0.45);
+    return { id: `fst-${idx}`, geo: buildTaperedTube([p0, p1, p2], 14, 0.0020, 0.0012, 6, false) };
+  });
+
+  cachedFlowerPotAssets = {
+    leafMats,
+    petalMat,
+    stamenMat,
+    soilMat,
+    potMat,
+    potInnerMat,
+    stemLeafMat,
+    stemFlowerMat,
+    outerPotGeo,
+    innerPotGeo,
+    soilGeo,
+    leafMeshes,
+    flowers,
+    flowerStems,
+  };
+  return cachedFlowerPotAssets;
+}
+
+export function RealisticSmallFlowerPot3D({ autoRotate = false }: { autoRotate?: boolean }) {
+  const groupRef = useRef<THREE.Group>(null!);
 
   useFrame((_, delta) => {
     if (autoRotate && groupRef.current) {
@@ -403,224 +629,20 @@ export function RealisticSmallFlowerPot3D({ autoRotate }: { autoRotate: boolean 
   const soilY = potHeight - 0.014;
 
   const {
-    leafMats,
     petalMat,
     stamenMat,
     soilMat,
     potMat,
     potInnerMat,
+    stemLeafMat,
+    stemFlowerMat,
     outerPotGeo,
     innerPotGeo,
     soilGeo,
-  } = useMemo(() => {
-    const deep = createLanceLeafPBR('deep');
-    const mid = createLanceLeafPBR('mid');
-    const young = createLanceLeafPBR('young');
-
-    const makeLeafMat = (maps: { map: THREE.CanvasTexture; normalMap: THREE.CanvasTexture }) =>
-      new THREE.MeshPhysicalMaterial({
-        map: maps.map,
-        normalMap: maps.normalMap,
-        normalScale: new THREE.Vector2(1.1, 1.1),
-        roughness: 0.30,
-        metalness: 0.01,
-        clearcoat: 0.45,
-        clearcoatRoughness: 0.22,
-        sheen: 0.22,
-        sheenColor: new THREE.Color('#95d068'),
-        side: THREE.DoubleSide,
-      });
-
-    const pMaps = createFlowerPetalPBR();
-    const pMat = new THREE.MeshPhysicalMaterial({
-      map: pMaps.map,
-      normalMap: pMaps.normalMap,
-      normalScale: new THREE.Vector2(0.85, 0.85),
-      roughness: 0.42,
-      sheen: 0.55,
-      sheenColor: new THREE.Color('#fff9ed'),
-      sheenRoughness: 0.45,
-      side: THREE.DoubleSide,
-    });
-
-    const sMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color('#e3b84c'),
-      roughness: 0.72,
-    });
-
-    const soilMaps = createRichSoilPBR(1.4);
-    const soMat = new THREE.MeshStandardMaterial({
-      map: soilMaps.map,
-      normalMap: soilMaps.normalMap,
-      normalScale: new THREE.Vector2(1.4, 1.4),
-      roughness: 0.94,
-    });
-
-    const clayTex = createFlutedClayPotTexture();
-    const poMat = new THREE.MeshPhysicalMaterial({
-      map: clayTex,
-      roughness: 0.48,
-      clearcoat: 0.25,
-      clearcoatRoughness: 0.35,
-    });
-    const poInnerMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color('#d6c6b2'),
-      roughness: 0.65,
-    });
-
-    // Fluted Artisan Rim Stoneware Pot (Lathe + subtle 28 vertical ribs)
-    const wall = 0.005;
-    const baseR = potRadius * 0.90;
-    const outerPts = [
-      new THREE.Vector2(0.0, 0.003),
-      new THREE.Vector2(baseR - 0.007, 0.003),
-      new THREE.Vector2(baseR, 0.002),
-      new THREE.Vector2(baseR + 0.001, 0.008),
-      new THREE.Vector2(potRadius, potHeight - 0.006),
-      new THREE.Vector2(potRadius + 0.001, potHeight),
-      new THREE.Vector2(potRadius - wall * 0.5, potHeight + 0.003),
-      new THREE.Vector2(potRadius - wall, potHeight + 0.001),
-    ];
-    const oGeo = new THREE.LatheGeometry(outerPts, 72).rotateY(Math.PI);
-
-    const innerPts = [
-      new THREE.Vector2(potRadius - wall, potHeight + 0.001),
-      new THREE.Vector2(potRadius - wall - 0.001, soilY - 0.02),
-    ];
-    const iGeo = new THREE.LatheGeometry(innerPts, 64).rotateY(Math.PI);
-    const sGeo = buildSoilMoundGeometry(potRadius - wall + 0.0005, 0.007);
-
-    return {
-      leafMats: { deep: makeLeafMat(deep), mid: makeLeafMat(mid), young: makeLeafMat(young) },
-      petalMat: pMat,
-      stamenMat: sMat,
-      soilMat: soMat,
-      potMat: poMat,
-      potInnerMat: poInnerMat,
-      outerPotGeo: oGeo,
-      innerPotGeo: iGeo,
-      soilGeo: sGeo,
-    };
-  }, [potRadius, potHeight, soilY]);
-
-  // 28 Glossy Lanceolate Leaves emerging from 3 soil root tufts
-  const leaves = useMemo(() => {
-    const items: Array<{
-      id: string;
-      root: [number, number, number];
-      base: [number, number, number];
-      dir: [number, number, number];
-      w: number;
-      len: number;
-      droop: number;
-      roll: number;
-      seed: number;
-      matKey: 'deep' | 'mid' | 'young';
-    }> = [];
-
-    const roots: Array<[number, number, number]> = [
-      [-0.011, soilY - 0.003, 0.008],
-      [0.012, soilY - 0.003, -0.006],
-      [-0.003, soilY - 0.003, -0.012],
-    ];
-
-    // Inner upright rosette (8 narrow upright leaves)
-    for (let i = 0; i < 8; i++) {
-      const a = (i * Math.PI * 2) / 8 + 0.2;
-      const rB = 0.014 + (i % 2) * 0.006;
-      const yB = soilY + 0.026 + (i % 3) * 0.005;
-      items.push({
-        id: `in-${i}`,
-        root: roots[i % 3],
-        base: [rB * Math.cos(a), yB, rB * Math.sin(a)],
-        dir: [0.42 * Math.cos(a), 0.88, 0.42 * Math.sin(a)],
-        w: 0.036,
-        len: 0.095 + (i % 3) * 0.01,
-        droop: 0.22,
-        roll: ((i % 3) - 1) * 0.2,
-        seed: 10 + i * 5,
-        matKey: i % 2 === 0 ? 'young' : 'mid',
-      });
-    }
-
-    // Mid arching rosette (10 glossy spreading leaves)
-    for (let i = 0; i < 10; i++) {
-      const a = (i * Math.PI * 2) / 10 + 0.5;
-      const rB = 0.028 + (i % 3) * 0.006;
-      const yB = soilY + 0.020 + (i % 2) * 0.004;
-      items.push({
-        id: `mid-${i}`,
-        root: roots[i % 3],
-        base: [rB * Math.cos(a), yB, rB * Math.sin(a)],
-        dir: [0.72 * Math.cos(a), 0.65, 0.72 * Math.sin(a)],
-        w: 0.044,
-        len: 0.115 + (i % 2) * 0.012,
-        droop: 0.30,
-        roll: ((i % 4) - 1.5) * 0.16,
-        seed: 50 + i * 7,
-        matKey: i % 2 === 0 ? 'mid' : 'deep',
-      });
-    }
-
-    // Outer broad rim-draping leaves (10 deep emerald leaves clearing pot rim gracefully)
-    for (let i = 0; i < 10; i++) {
-      const a = (i * Math.PI * 2) / 10 + 0.15;
-      const rB = 0.042 + (i % 2) * 0.005;
-      const yB = soilY + 0.024;
-      items.push({
-        id: `out-${i}`,
-        root: roots[i % 3],
-        base: [rB * Math.cos(a), yB, rB * Math.sin(a)],
-        dir: [0.84 * Math.cos(a), 0.34 - (i % 2) * 0.06, 0.84 * Math.sin(a)],
-        w: 0.048,
-        len: 0.122 + (i % 3) * 0.008,
-        droop: 0.34,
-        roll: ((i % 3) - 1) * 0.16,
-        seed: 110 + i * 9,
-        matKey: 'deep',
-      });
-    }
-
-    return items;
-  }, [soilY]);
-
-  // 6 Realistic Flowering Stalks rising gracefully above the dark foliage (5 blooms + 1 green bud)
-  const flowers = useMemo(
-    () => [
-      { pos: [-0.024, soilY + 0.128, 0.022] as [number, number, number], root: [-0.008, soilY - 0.002, 0.008] as [number, number, number], dir: [-0.22, 0.94, 0.24] as [number, number, number], scale: 1.05, isSpathe: true },
-      { pos: [0.032, soilY + 0.115, 0.016] as [number, number, number], root: [0.010, soilY - 0.002, 0.004] as [number, number, number], dir: [0.30, 0.92, 0.20] as [number, number, number], scale: 0.96, isSpathe: false },
-      { pos: [-0.008, soilY + 0.145, -0.024] as [number, number, number], root: [-0.003, soilY - 0.002, -0.009] as [number, number, number], dir: [-0.08, 0.97, -0.22] as [number, number, number], scale: 1.0, isSpathe: true },
-      { pos: [0.022, soilY + 0.095, -0.034] as [number, number, number], root: [0.008, soilY - 0.002, -0.010] as [number, number, number], dir: [0.24, 0.88, -0.38] as [number, number, number], scale: 0.88, isSpathe: false },
-      { pos: [-0.044, soilY + 0.092, -0.010] as [number, number, number], root: [-0.012, soilY - 0.002, -0.004] as [number, number, number], dir: [-0.42, 0.88, -0.10] as [number, number, number], scale: 0.92, isSpathe: true },
-    ],
-    [soilY]
-  );
-
-  // Precompute leaf geometries + petiole stem geometries cleanly
-  const leafMeshes = useMemo(() => {
-    return leaves.map((l) => {
-      const geo = buildLanceLeafGeometry(l.w, l.len, l.droop, l.seed);
-      const dirVec = new THREE.Vector3(...l.dir).normalize();
-      const q = orientLeafSkyward(dirVec, l.roll);
-
-      const p0 = new THREE.Vector3(...l.root);
-      const p3 = new THREE.Vector3(...l.base);
-      const p1 = new THREE.Vector3(p0.x * 0.65 + p3.x * 0.35, Math.max(p0.y, p3.y) + 0.004, p0.z * 0.65 + p3.z * 0.35);
-      const p2 = p3.clone().sub(dirVec.clone().multiplyScalar(0.01));
-      const stemGeo = buildTaperedTube([p0, p1, p2, p3], 10, 0.0018, 0.0009, 6);
-
-      return { id: l.id, geo, stemGeo, pos: l.base, q, mat: leafMats[l.matKey] };
-    });
-  }, [leaves, leafMats]);
-
-  const flowerStems = useMemo(() => {
-    return flowers.map((f, idx) => {
-      const p0 = new THREE.Vector3(...f.root);
-      const p2 = new THREE.Vector3(...f.pos);
-      const p1 = new THREE.Vector3((p0.x + p2.x) * 0.45, (p0.y + p2.y) * 0.55, (p0.z + p2.z) * 0.45);
-      return { id: `fst-${idx}`, geo: buildTaperedTube([p0, p1, p2], 14, 0.0020, 0.0012, 6, false) };
-    });
-  }, [flowers]);
+    leafMeshes,
+    flowers,
+    flowerStems,
+  } = useMemo(() => getSharedFlowerPotAssets(potRadius, potHeight, soilY), [potRadius, potHeight, soilY]);
 
   return (
     <group ref={groupRef} position={[0, -0.02, 0]}>
@@ -645,18 +667,14 @@ export function RealisticSmallFlowerPot3D({ autoRotate }: { autoRotate: boolean 
       {/* 2. LANCEOLATE FOLIAGE ROSETTE */}
       {leafMeshes.map((lm) => (
         <group key={lm.id}>
-          <mesh geometry={lm.stemGeo} castShadow>
-            <meshStandardMaterial color="#3c6b2d" roughness={0.44} />
-          </mesh>
+          <mesh geometry={lm.stemGeo} material={stemLeafMat} castShadow />
           <mesh geometry={lm.geo} material={lm.mat} position={lm.pos} quaternion={lm.q} castShadow receiveShadow />
         </group>
       ))}
 
       {/* 3. SCULPTED FLOWER STEMS & BLOOMS */}
       {flowerStems.map((fs) => (
-        <mesh key={fs.id} geometry={fs.geo} castShadow>
-          <meshStandardMaterial color="#4b7b35" roughness={0.40} />
-        </mesh>
+        <mesh key={fs.id} geometry={fs.geo} material={stemFlowerMat} castShadow />
       ))}
       {flowers.map((f, idx) => (
         <FlowerBlossom

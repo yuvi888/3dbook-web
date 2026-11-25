@@ -334,12 +334,176 @@ export interface RealisticLamp3DProps {
   autoRotate?: boolean;
   lightLevel?: 0 | 1; // 0: OFF (Default), 1: Minimal Soft Glow
   onToggleLight?: () => void;
+  emitPointLight?: boolean;
+}
+
+type SharedLampAssets = {
+  travertineGeo: THREE.BufferGeometry;
+  footPlinthGeo: THREE.BufferGeometry;
+  shadeGeo: THREE.BufferGeometry;
+  harpLeftGeo: THREE.BufferGeometry;
+  harpRightGeo: THREE.BufferGeometry;
+  bulbGlassGeo: THREE.BufferGeometry;
+  filamentGeo: THREE.BufferGeometry;
+  travertineMat: THREE.MeshPhysicalMaterial;
+  brassMat: THREE.MeshStandardMaterial;
+  polishedBrassMat: THREE.MeshStandardMaterial;
+  bulbGlassMat: THREE.MeshPhysicalMaterial;
+  linenMatOff: THREE.MeshPhysicalMaterial;
+  linenMatLit: THREE.MeshPhysicalMaterial;
+  filamentMatOff: THREE.MeshStandardMaterial;
+  filamentMatLit: THREE.MeshStandardMaterial;
+};
+
+let cachedLampAssets: SharedLampAssets | null = null;
+
+function getSharedLampAssets(): SharedLampAssets {
+  if (cachedLampAssets) return cachedLampAssets;
+
+  const travMaps = createTravertinePBRSet();
+  const linenMaps = createLinenShadePBRSet();
+  const brassRough = createBrushedBrassMaps();
+
+  const tMat = new THREE.MeshPhysicalMaterial({
+    map: travMaps.map,
+    normalMap: travMaps.normalMap,
+    normalScale: new THREE.Vector2(0.85, 0.85),
+    roughnessMap: travMaps.roughnessMap,
+    roughness: 0.48,
+    metalness: 0.02,
+    clearcoat: 0.16,
+    clearcoatRoughness: 0.35,
+  });
+
+  const bMat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color('#c89f4e'),
+    roughnessMap: brassRough,
+    roughness: 0.30,
+    metalness: 0.88,
+  });
+
+  const pBMat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color('#dfb965'),
+    roughness: 0.18,
+    metalness: 0.94,
+  });
+
+  const makeLinen = (emissiveIntensity: number) =>
+    new THREE.MeshPhysicalMaterial({
+      map: linenMaps.map,
+      normalMap: linenMaps.normalMap,
+      normalScale: new THREE.Vector2(0.65, 0.65),
+      emissiveMap: linenMaps.emissiveMap,
+      emissive: new THREE.Color('#ffcf78'),
+      emissiveIntensity,
+      roughness: 0.88,
+      metalness: 0.0,
+      sheen: 0.35,
+      sheenColor: new THREE.Color('#fff1d6'),
+      side: THREE.DoubleSide,
+    });
+
+  const gMat = new THREE.MeshPhysicalMaterial({
+    color: new THREE.Color('#fff9ec'),
+    transparent: true,
+    opacity: 0.42,
+    roughness: 0.08,
+    metalness: 0.0,
+    ior: 1.48,
+    reflectivity: 0.9,
+    clearcoat: 0.8,
+  });
+
+  const makeFil = (color: string, emissiveIntensity: number) =>
+    new THREE.MeshStandardMaterial({
+      color: new THREE.Color(color),
+      emissive: new THREE.Color('#ffab38'),
+      emissiveIntensity,
+      roughness: 0.2,
+    });
+
+  const tGeo = buildFlutedTravertinePedestal();
+
+  const footPts = [
+    new THREE.Vector2(0.053, 0.0025),
+    new THREE.Vector2(0.058, 0.003),
+    new THREE.Vector2(0.059, 0.007),
+    new THREE.Vector2(0.055, 0.0105),
+    new THREE.Vector2(0.049, 0.012),
+  ];
+  const fGeo = new THREE.LatheGeometry(footPts, 64).rotateY(Math.PI);
+
+  const shadePts = [
+    new THREE.Vector2(0.076, 0.289),
+    new THREE.Vector2(0.078, 0.291),
+    new THREE.Vector2(0.079, 0.288),
+    new THREE.Vector2(0.090, 0.232),
+    new THREE.Vector2(0.101, 0.176),
+    new THREE.Vector2(0.102, 0.172),
+    new THREE.Vector2(0.100, 0.171),
+  ];
+  const sGeo = new THREE.LatheGeometry(shadePts, 72).rotateY(Math.PI);
+
+  const makeHarpArm = (sign: 1 | -1) => {
+    const curve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(sign * 0.015, 0.172, 0),
+      new THREE.Vector3(sign * 0.046, 0.186, 0),
+      new THREE.Vector3(sign * 0.052, 0.232, 0),
+      new THREE.Vector3(sign * 0.036, 0.272, 0),
+      new THREE.Vector3(sign * 0.008, 0.286, 0),
+    ]);
+    return new THREE.TubeGeometry(curve, 24, 0.0017, 8, false);
+  };
+
+  const bulbPts = [
+    new THREE.Vector2(0.008, 0.210),
+    new THREE.Vector2(0.012, 0.220),
+    new THREE.Vector2(0.021, 0.236),
+    new THREE.Vector2(0.022, 0.249),
+    new THREE.Vector2(0.016, 0.261),
+    new THREE.Vector2(0.006, 0.267),
+    new THREE.Vector2(0.0, 0.268),
+  ];
+  const bGlassGeo = new THREE.LatheGeometry(bulbPts, 32);
+
+  const filPts: THREE.Vector3[] = [];
+  for (let i = 0; i <= 24; i++) {
+    const t = i / 24;
+    const angle = t * Math.PI * 1.4 - Math.PI * 0.2;
+    const r = 0.0085;
+    const fx = Math.sin(angle) * r;
+    const fy = 0.238 + Math.cos(angle) * 0.009 + Math.sin(t * Math.PI * 10) * 0.0012;
+    const fz = Math.cos(t * Math.PI * 10) * 0.0012;
+    filPts.push(new THREE.Vector3(fx, fy, fz));
+  }
+  const filCurve = new THREE.CatmullRomCurve3(filPts);
+  const fGeoTube = new THREE.TubeGeometry(filCurve, 40, 0.00055, 6, false);
+
+  cachedLampAssets = {
+    travertineGeo: tGeo,
+    footPlinthGeo: fGeo,
+    shadeGeo: sGeo,
+    harpLeftGeo: makeHarpArm(-1),
+    harpRightGeo: makeHarpArm(1),
+    bulbGlassGeo: bGlassGeo,
+    filamentGeo: fGeoTube,
+    travertineMat: tMat,
+    brassMat: bMat,
+    polishedBrassMat: pBMat,
+    bulbGlassMat: gMat,
+    linenMatOff: makeLinen(0.0),
+    linenMatLit: makeLinen(0.18),
+    filamentMatOff: makeFil('#6c5a4a', 0.0),
+    filamentMatLit: makeFil('#ffd485', 1.4),
+  };
+  return cachedLampAssets;
 }
 
 export function RealisticLamp3D({
   autoRotate = false,
   lightLevel = 0,
   onToggleLight,
+  emitPointLight = true,
 }: RealisticLamp3DProps) {
   const groupRef = useRef<THREE.Group>(null!);
 
@@ -360,155 +524,16 @@ export function RealisticLamp3D({
     travertineMat,
     brassMat,
     polishedBrassMat,
-    linenMat,
     bulbGlassMat,
-    filamentMat,
-  } = useMemo(() => {
-    // 1. Textures & Materials
-    const travMaps = createTravertinePBRSet();
-    const linenMaps = createLinenShadePBRSet();
-    const brassRough = createBrushedBrassMaps();
+    linenMatOff,
+    linenMatLit,
+    filamentMatOff,
+    filamentMatLit,
+  } = useMemo(() => getSharedLampAssets(), []);
 
-    const tMat = new THREE.MeshPhysicalMaterial({
-      map: travMaps.map,
-      normalMap: travMaps.normalMap,
-      normalScale: new THREE.Vector2(0.85, 0.85),
-      roughnessMap: travMaps.roughnessMap,
-      roughness: 0.48,
-      metalness: 0.02,
-      clearcoat: 0.16,
-      clearcoatRoughness: 0.35,
-    });
-
-    const bMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color('#c89f4e'),
-      roughnessMap: brassRough,
-      roughness: 0.30,
-      metalness: 0.88,
-    });
-
-    const pBMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color('#dfb965'),
-      roughness: 0.18,
-      metalness: 0.94,
-    });
-
-    const lMat = new THREE.MeshPhysicalMaterial({
-      map: linenMaps.map,
-      normalMap: linenMaps.normalMap,
-      normalScale: new THREE.Vector2(0.65, 0.65),
-      emissiveMap: linenMaps.emissiveMap,
-      emissive: new THREE.Color('#ffcf78'),
-      emissiveIntensity: 0.95,
-      roughness: 0.88,
-      metalness: 0.0,
-      sheen: 0.35,
-      sheenColor: new THREE.Color('#fff1d6'),
-      side: THREE.DoubleSide,
-    });
-
-    const gMat = new THREE.MeshPhysicalMaterial({
-      color: new THREE.Color('#fff9ec'),
-      transparent: true,
-      opacity: 0.42,
-      roughness: 0.08,
-      metalness: 0.0,
-      ior: 1.48,
-      reflectivity: 0.9,
-      clearcoat: 0.8,
-    });
-
-    const fMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color('#ffd380'),
-      emissive: new THREE.Color('#ffab38'),
-      emissiveIntensity: 4.5,
-      roughness: 0.2,
-    });
-
-    // 2. Sculpted Fluted Travertine Pedestal
-    const tGeo = buildFlutedTravertinePedestal();
-
-    // 3. Turned Brass Foot Plinth (with recessed bevel & felt seat)
-    const footPts = [
-      new THREE.Vector2(0.053, 0.0025),
-      new THREE.Vector2(0.058, 0.003),
-      new THREE.Vector2(0.059, 0.007),
-      new THREE.Vector2(0.055, 0.0105),
-      new THREE.Vector2(0.049, 0.012),
-    ];
-    const fGeo = new THREE.LatheGeometry(footPts, 64).rotateY(Math.PI);
-
-    // 4. Open-Bottom & Open-Top Empire Linen Drum Shade with Rolled Edges
-    const shadePts = [
-      new THREE.Vector2(0.076, 0.289), // Inner top edge fold
-      new THREE.Vector2(0.078, 0.291), // Top rolled trim lip
-      new THREE.Vector2(0.079, 0.288),
-      new THREE.Vector2(0.090, 0.232), // Graceful tapered linen wall
-      new THREE.Vector2(0.101, 0.176),
-      new THREE.Vector2(0.102, 0.172), // Bottom rolled trim lip
-      new THREE.Vector2(0.100, 0.171), // Inner bottom fold
-    ];
-    const sGeo = new THREE.LatheGeometry(shadePts, 72).rotateY(Math.PI);
-
-    // 5. Symmetrical Brass Harp Arms arching around bulb inside shade
-    const makeHarpArm = (sign: 1 | -1) => {
-      const curve = new THREE.CatmullRomCurve3([
-        new THREE.Vector3(sign * 0.015, 0.172, 0),
-        new THREE.Vector3(sign * 0.046, 0.186, 0),
-        new THREE.Vector3(sign * 0.052, 0.232, 0),
-        new THREE.Vector3(sign * 0.036, 0.272, 0),
-        new THREE.Vector3(sign * 0.008, 0.286, 0),
-      ]);
-      return new THREE.TubeGeometry(curve, 24, 0.0017, 8, false);
-    };
-
-    // 6. Glass A19 Pear Bulb Envelope + Helical Filament Coil inside shade
-    const bulbPts = [
-      new THREE.Vector2(0.008, 0.210),
-      new THREE.Vector2(0.012, 0.220),
-      new THREE.Vector2(0.021, 0.236),
-      new THREE.Vector2(0.022, 0.249),
-      new THREE.Vector2(0.016, 0.261),
-      new THREE.Vector2(0.006, 0.267),
-      new THREE.Vector2(0.0, 0.268),
-    ];
-    const bGlassGeo = new THREE.LatheGeometry(bulbPts, 32);
-
-    const filPts: THREE.Vector3[] = [];
-    for (let i = 0; i <= 24; i++) {
-      const t = i / 24;
-      const angle = t * Math.PI * 1.4 - Math.PI * 0.2;
-      const r = 0.0085;
-      const fx = Math.sin(angle) * r;
-      const fy = 0.238 + Math.cos(angle) * 0.009 + Math.sin(t * Math.PI * 10) * 0.0012;
-      const fz = Math.cos(t * Math.PI * 10) * 0.0012;
-      filPts.push(new THREE.Vector3(fx, fy, fz));
-    }
-    const filCurve = new THREE.CatmullRomCurve3(filPts);
-    const fGeoTube = new THREE.TubeGeometry(filCurve, 40, 0.00055, 6, false);
-
-    return {
-      travertineGeo: tGeo,
-      footPlinthGeo: fGeo,
-      shadeGeo: sGeo,
-      harpLeftGeo: makeHarpArm(-1),
-      harpRightGeo: makeHarpArm(1),
-      bulbGlassGeo: bGlassGeo,
-      filamentGeo: fGeoTube,
-      travertineMat: tMat,
-      brassMat: bMat,
-      polishedBrassMat: pBMat,
-      linenMat: lMat,
-      bulbGlassMat: gMat,
-      filamentMat: fMat,
-    };
-  }, []);
-
-  // Light is turned OFF by default; when toggled on, stays truly minimal so inner linen weave remains visible!
   const isLit = lightLevel === 1;
-  linenMat.emissiveIntensity = isLit ? 0.12 : 0.0;
-  filamentMat.emissiveIntensity = isLit ? 1.1 : 0.0;
-  filamentMat.color.set(isLit ? '#ffd485' : '#6c5a4a');
+  const linenMat = isLit ? linenMatLit : linenMatOff;
+  const filamentMat = isLit ? filamentMatLit : filamentMatOff;
 
   const pointIntensity = isLit ? 0.035 : 0;
 
@@ -595,7 +620,7 @@ export function RealisticLamp3D({
       <mesh geometry={shadeGeo} material={linenMat} castShadow receiveShadow />
 
       {/* 9. MINIMAL WARM 2700K GLOW (Subtle warmth without blowing out inner shade weave) */}
-      {isLit && (
+      {isLit && emitPointLight && (
         <pointLight
           position={[0, 0.228, 0]}
           color="#ffcc7a"

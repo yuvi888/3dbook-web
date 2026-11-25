@@ -10,23 +10,26 @@ gsap.registerPlugin(ScrollTrigger);
 export default function SmoothScroller({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const lenis = new Lenis({
-      duration: 1.2,
-      easing: (t: number) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+      duration: 0.68,
+      easing: (t: number) => 1 - Math.pow(1 - t, 3.2),
+      wheelMultiplier: 1.55,
+      touchMultiplier: 1.8,
       smoothWheel: true,
     });
 
-    lenis.on('scroll', ScrollTrigger.update);
+    const onScroll = () => ScrollTrigger.update();
+    lenis.on('scroll', onScroll);
 
-    gsap.ticker.add((time) => {
+    const onTick = (time: number) => {
       lenis.raf(time * 1000);
-    });
-
+    };
+    gsap.ticker.add(onTick);
     gsap.ticker.lagSmoothing(0);
 
     return () => {
+      lenis.off('scroll', onScroll);
       lenis.destroy();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      gsap.ticker.remove(lenis.raf as any);
+      gsap.ticker.remove(onTick);
       ScrollTrigger.getAll().forEach((trigger) => trigger.kill());
     };
   }, []);

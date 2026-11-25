@@ -1,10 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { Suspense, useState, useRef, useMemo, useEffect } from 'react';
+import { Suspense, useState, useRef, useEffect } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, useGLTF, ContactShadows } from '@react-three/drei';
-import * as THREE from 'three';
 import Link from 'next/link';
 import { AdvancedBook3D, createEditorialCoverDataUrl } from '@/components/3d/AdvancedBook3D';
 import { RealisticPlantPot3D } from '@/components/3d/RealisticPlantPot3D';

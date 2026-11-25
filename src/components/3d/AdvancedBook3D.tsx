@@ -10,18 +10,23 @@ export interface AdvancedBook3DProps {
   spineColor?: string;
   title?: string;
   author?: string;
+  fallbackBgTop?: string;
+  fallbackBgBottom?: string;
+  fallbackAccent?: string;
+  fallbackMotif?: 'sun' | 'arch' | 'cosmos' | 'botanical' | 'swiss';
   position?: [number, number, number];
   rotation?: [number, number, number];
   scale?: number;
   interactive?: boolean;
+  showFloatingTooltip?: boolean;
   onClick?: () => void;
+  onHoverChange?: (hovered: boolean) => void;
 }
 
 /**
- * Generates an editorial 2:3 hardcover artwork on an offscreen canvas.
- * Used both for realistic built-in presets and as an instant offline fallback.
+ * Generates an editorial 2:3 hardcover artwork onto an HTMLCanvasElement.
  */
-export function createEditorialCoverDataUrl(options: {
+function renderEditorialCoverCanvas(options: {
   title: string;
   author: string;
   subtitle?: string;
@@ -30,15 +35,15 @@ export function createEditorialCoverDataUrl(options: {
   accent: string;
   textColor?: string;
   motif?: 'sun' | 'arch' | 'cosmos' | 'botanical' | 'swiss';
-}): string {
-  if (typeof window === 'undefined') return '';
+}): HTMLCanvasElement | null {
+  if (typeof window === 'undefined') return null;
   const w = 1024;
   const h = 1536;
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d');
-  if (!ctx) return '';
+  if (!ctx) return null;
 
   const textCol = options.textColor || '#faf6ed';
 
@@ -210,7 +215,48 @@ export function createEditorialCoverDataUrl(options: {
   ctx.fillText('ARCHIVAL PRESS • MCMXXIV', cx, h - 125);
   ctx.restore();
 
-  return canvas.toDataURL('image/png');
+  return canvas;
+}
+
+export function createEditorialCoverDataUrl(options: {
+  title: string;
+  author: string;
+  subtitle?: string;
+  bgTop: string;
+  bgBottom: string;
+  accent: string;
+  textColor?: string;
+  motif?: 'sun' | 'arch' | 'cosmos' | 'botanical' | 'swiss';
+}): string {
+  const canvas = renderEditorialCoverCanvas(options);
+  return canvas ? canvas.toDataURL('image/png') : '';
+}
+
+const editorialTextureCache = new Map<string, THREE.CanvasTexture>();
+
+function getOrCreateEditorialCoverTexture(options: {
+  title: string;
+  author: string;
+  bgTop: string;
+  bgBottom: string;
+  accent: string;
+  motif: 'sun' | 'arch' | 'cosmos' | 'botanical' | 'swiss';
+}): THREE.CanvasTexture | undefined {
+  if (typeof window === 'undefined') return undefined;
+  const key = `${options.title}|${options.author}|${options.bgTop}|${options.bgBottom}|${options.accent}|${options.motif}`;
+  const cached = editorialTextureCache.get(key);
+  if (cached) return cached;
+
+  const canvas = renderEditorialCoverCanvas(options);
+  if (!canvas) return undefined;
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.generateMipmaps = true;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  editorialTextureCache.set(key, tex);
+  return tex;
 }
 
 /**
@@ -238,16 +284,354 @@ function applyAspectCoverFit(tex: THREE.Texture, targetAspect: number) {
   }
 }
 
+type SharedBookBaseAssets = {
+  paperEdgeTexture?: THREE.CanvasTexture;
+  clothBumpTexture?: THREE.CanvasTexture;
+  headbandTexture?: THREE.CanvasTexture;
+  endpaperMat: THREE.MeshStandardMaterial;
+  paperMat: THREE.MeshStandardMaterial;
+  headbandMat: THREE.MeshStandardMaterial;
+  concavePaperGeo: THREE.BufferGeometry;
+  frontCoverGeo: THREE.BufferGeometry;
+  backBoardGeo: THREE.BufferGeometry;
+};
+
+let cachedBookBaseAssets: SharedBookBaseAssets | null = null;
+
+function splitBoardMaterialGroups(geo: THREE.BufferGeometry, innerNormalSignZ: 1 | -1) {
+  const pos = geo.attributes.position;
+  const norm = geo.attributes.normal;
+  const uv = geo.attributes.uv;
+  const triCount = pos.count / 3;
+
+  const outerVerts: number[] = [];
+  const outerNorms: number[] = [];
+  const outerUvs: number[] = [];
+  const innerVerts: number[] = [];
+  const innerNorms: number[] = [];
+  const innerUvs: number[] = [];
+
+  for (let t = 0; t < triCount; t++) {
+    const i0 = t * 3;
+    const nz = (norm.getZ(i0) + norm.getZ(i0 + 1) + norm.getZ(i0 + 2)) / 3;
+    const isInner = innerNormalSignZ < 0 ? nz < -0.9 : nz > 0.9;
+    const targetPos = isInner ? innerVerts : outerVerts;
+    const targetNorm = isInner ? innerNorms : outerNorms;
+    const targetUv = isInner ? innerUvs : outerUvs;
+
+    for (let k = 0; k < 3; k++) {
+      const idx = i0 + k;
+      targetPos.push(pos.getX(idx), pos.getY(idx), pos.getZ(idx));
+      targetNorm.push(norm.getX(idx), norm.getY(idx), norm.getZ(idx));
+      targetUv.push(uv.getX(idx), uv.getY(idx));
+    }
+  }
+
+  const combinedPos = new Float32Array([...outerVerts, ...innerVerts]);
+  const combinedNorm = new Float32Array([...outerNorms, ...innerNorms]);
+  const combinedUv = new Float32Array([...outerUvs, ...innerUvs]);
+
+  const outGeo = new THREE.BufferGeometry();
+  outGeo.setAttribute('position', new THREE.BufferAttribute(combinedPos, 3));
+  outGeo.setAttribute('normal', new THREE.BufferAttribute(combinedNorm, 3));
+  outGeo.setAttribute('uv', new THREE.BufferAttribute(combinedUv, 2));
+  outGeo.clearGroups();
+  outGeo.addGroup(0, outerVerts.length / 3, 0);
+  outGeo.addGroup(outerVerts.length / 3, innerVerts.length / 3, 1);
+  return outGeo;
+}
+
+function getSharedBookBaseAssets(
+  bookW: number,
+  bookH: number,
+  boardThick: number,
+  pageH: number,
+  pageT: number,
+  spinePaperX: number,
+  forePaperX: number
+): SharedBookBaseAssets {
+  if (cachedBookBaseAssets) return cachedBookBaseAssets;
+
+  let paperEdgeTexture: THREE.CanvasTexture | undefined;
+  let clothBumpTexture: THREE.CanvasTexture | undefined;
+  let headbandTexture: THREE.CanvasTexture | undefined;
+
+  if (typeof window !== 'undefined') {
+    const pCanvas = document.createElement('canvas');
+    pCanvas.width = 256;
+    pCanvas.height = 1024;
+    const pCtx = pCanvas.getContext('2d');
+    if (pCtx) {
+      pCtx.fillStyle = '#f8f2e4';
+      pCtx.fillRect(0, 0, 256, 1024);
+      for (let y = 0; y < 1024; y += 3) {
+        const shade = (Math.sin(y * 0.37) + 1) * 0.5;
+        pCtx.fillStyle = shade > 0.5 ? 'rgba(135, 112, 82, 0.22)' : 'rgba(180, 158, 125, 0.14)';
+        pCtx.fillRect(0, y, 256, 1.2);
+      }
+      for (let y = 0; y < 1024; y += 32) {
+        pCtx.fillStyle = 'rgba(95, 75, 50, 0.16)';
+        pCtx.fillRect(0, y, 256, 1.5);
+      }
+      paperEdgeTexture = new THREE.CanvasTexture(pCanvas);
+      paperEdgeTexture.colorSpace = THREE.SRGBColorSpace;
+      paperEdgeTexture.wrapS = THREE.RepeatWrapping;
+      paperEdgeTexture.wrapT = THREE.RepeatWrapping;
+    }
+
+    const cCanvas = document.createElement('canvas');
+    cCanvas.width = 256;
+    cCanvas.height = 256;
+    const cCtx = cCanvas.getContext('2d');
+    if (cCtx) {
+      cCtx.fillStyle = '#808080';
+      cCtx.fillRect(0, 0, 256, 256);
+      for (let y = 0; y < 256; y += 2) {
+        cCtx.fillStyle = y % 4 === 0 ? '#929292' : '#6e6e6e';
+        cCtx.fillRect(0, y, 256, 1);
+      }
+      for (let x = 0; x < 256; x += 2) {
+        cCtx.fillStyle = x % 4 === 0 ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)';
+        cCtx.fillRect(x, 0, 1, 256);
+      }
+      clothBumpTexture = new THREE.CanvasTexture(cCanvas);
+      clothBumpTexture.wrapS = THREE.RepeatWrapping;
+      clothBumpTexture.wrapT = THREE.RepeatWrapping;
+      clothBumpTexture.repeat.set(6, 9);
+    }
+
+    const hCanvas = document.createElement('canvas');
+    hCanvas.width = 128;
+    hCanvas.height = 64;
+    const hCtx = hCanvas.getContext('2d');
+    if (hCtx) {
+      for (let x = 0; x < 128; x += 8) {
+        hCtx.fillStyle = (x / 8) % 2 === 0 ? '#d8b454' : '#7b242c';
+        hCtx.fillRect(x, 0, 8, 64);
+      }
+      headbandTexture = new THREE.CanvasTexture(hCanvas);
+      headbandTexture.colorSpace = THREE.SRGBColorSpace;
+      headbandTexture.wrapS = THREE.RepeatWrapping;
+      headbandTexture.wrapT = THREE.RepeatWrapping;
+      headbandTexture.repeat.set(3, 1);
+    }
+  }
+
+  const endpaperMat = new THREE.MeshStandardMaterial({
+    color: '#efe7d6',
+    roughness: 0.82,
+    metalness: 0.0,
+  });
+
+  const paperMat = new THREE.MeshStandardMaterial({
+    map: paperEdgeTexture,
+    color: '#fcf7eb',
+    roughness: 0.88,
+    metalness: 0.01,
+  });
+
+  const headbandMat = new THREE.MeshStandardMaterial({
+    map: headbandTexture,
+    roughness: 0.55,
+    metalness: 0.08,
+  });
+
+  // Concave paper geometry
+  const xSegs = 16;
+  const ySegs = 20;
+  const zSegs = 24;
+  const halfPH = pageH / 2;
+  const halfPT = pageT / 2;
+  const concavity = 0.0065;
+
+  const verts: number[] = [];
+  const normals: number[] = [];
+  const uvs: number[] = [];
+  const indices: number[] = [];
+  const addQuad = (v0: number, v1: number, v2: number, v3: number) => {
+    indices.push(v0, v1, v2, v1, v3, v2);
+  };
+
+  const foreStart = verts.length / 3;
+  for (let iy = 0; iy <= ySegs; iy++) {
+    const yNorm = iy / ySegs;
+    const y = -halfPH + yNorm * pageH;
+    for (let iz = 0; iz <= zSegs; iz++) {
+      const zNorm = iz / zSegs;
+      const z = -halfPT + zNorm * pageT;
+      const normZ = z / halfPT;
+      const curveX = forePaperX - concavity * (1.0 - normZ * normZ);
+      verts.push(curveX, y, z);
+      const dXdz = (2 * concavity * normZ) / halfPT;
+      const n = new THREE.Vector3(1, 0, -dXdz).normalize();
+      normals.push(n.x, n.y, n.z);
+      uvs.push(yNorm, zNorm * 1.8);
+    }
+  }
+  for (let iy = 0; iy < ySegs; iy++) {
+    for (let iz = 0; iz < zSegs; iz++) {
+      const row1 = foreStart + iy * (zSegs + 1);
+      const row2 = foreStart + (iy + 1) * (zSegs + 1);
+      addQuad(row1 + iz, row2 + iz, row1 + iz + 1, row2 + iz + 1);
+    }
+  }
+
+  const topStart = verts.length / 3;
+  for (let ix = 0; ix <= xSegs; ix++) {
+    const xNorm = ix / xSegs;
+    for (let iz = 0; iz <= zSegs; iz++) {
+      const zNorm = iz / zSegs;
+      const z = -halfPT + zNorm * pageT;
+      const normZ = z / halfPT;
+      const endX = forePaperX - concavity * (1.0 - normZ * normZ);
+      const x = spinePaperX + xNorm * (endX - spinePaperX);
+      verts.push(x, halfPH, z);
+      normals.push(0, 1, 0);
+      uvs.push(xNorm, zNorm * 1.8);
+    }
+  }
+  for (let ix = 0; ix < xSegs; ix++) {
+    for (let iz = 0; iz < zSegs; iz++) {
+      const row1 = topStart + ix * (zSegs + 1);
+      const row2 = topStart + (ix + 1) * (zSegs + 1);
+      addQuad(row1 + iz, row1 + iz + 1, row2 + iz, row2 + iz + 1);
+    }
+  }
+
+  const botStart = verts.length / 3;
+  for (let ix = 0; ix <= xSegs; ix++) {
+    const xNorm = ix / xSegs;
+    for (let iz = 0; iz <= zSegs; iz++) {
+      const zNorm = iz / zSegs;
+      const z = -halfPT + zNorm * pageT;
+      const normZ = z / halfPT;
+      const endX = forePaperX - concavity * (1.0 - normZ * normZ);
+      const x = spinePaperX + xNorm * (endX - spinePaperX);
+      verts.push(x, -halfPH, z);
+      normals.push(0, -1, 0);
+      uvs.push(xNorm, zNorm * 1.8);
+    }
+  }
+  for (let ix = 0; ix < xSegs; ix++) {
+    for (let iz = 0; iz < zSegs; iz++) {
+      const row1 = botStart + ix * (zSegs + 1);
+      const row2 = botStart + (ix + 1) * (zSegs + 1);
+      addQuad(row1 + iz, row2 + iz, row1 + iz + 1, row2 + iz + 1);
+    }
+  }
+
+  const spineStart = verts.length / 3;
+  for (let iy = 0; iy <= ySegs; iy++) {
+    const yNorm = iy / ySegs;
+    const y = -halfPH + yNorm * pageH;
+    for (let iz = 0; iz <= zSegs; iz++) {
+      const zNorm = iz / zSegs;
+      const z = -halfPT + zNorm * pageT;
+      verts.push(spinePaperX, y, z);
+      normals.push(-1, 0, 0);
+      uvs.push(yNorm, zNorm);
+    }
+  }
+  for (let iy = 0; iy < ySegs; iy++) {
+    for (let iz = 0; iz < zSegs; iz++) {
+      const row1 = spineStart + iy * (zSegs + 1);
+      const row2 = spineStart + (iy + 1) * (zSegs + 1);
+      addQuad(row1 + iz, row1 + iz + 1, row2 + iz, row2 + iz + 1);
+    }
+  }
+
+  const concavePaperGeo = new THREE.BufferGeometry();
+  concavePaperGeo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  concavePaperGeo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  concavePaperGeo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  concavePaperGeo.setIndex(indices);
+
+  const buildBoard = (isFront: boolean) => {
+    const bevelSize = 0.0008;
+    const bevelThick = 0.0007;
+    const cornerR = 0.0028;
+    const xMin = -bookW / 2 + bevelSize;
+    const xMax = bookW / 2 - bevelSize;
+    const yMin = -bookH / 2 + bevelSize;
+    const yMax = bookH / 2 - bevelSize;
+
+    const shape = new THREE.Shape();
+    shape.moveTo(xMin, yMin);
+    shape.lineTo(xMin, yMax);
+    shape.lineTo(xMax - cornerR, yMax);
+    shape.quadraticCurveTo(xMax, yMax, xMax, yMax - cornerR);
+    shape.lineTo(xMax, yMin + cornerR);
+    shape.quadraticCurveTo(xMax, yMin, xMax - cornerR, yMin);
+    shape.lineTo(xMin, yMin);
+
+    const rawGeo = new THREE.ExtrudeGeometry(shape, {
+      steps: 1,
+      depth: boardThick - bevelThick * 2,
+      bevelEnabled: true,
+      bevelThickness: bevelThick,
+      bevelSize,
+      bevelSegments: 4,
+      curveSegments: 8,
+    });
+    rawGeo.center();
+
+    const pos = rawGeo.attributes.position;
+    const uv = rawGeo.attributes.uv;
+    const grooveX = -bookW / 2 + 0.0115;
+
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const y = pos.getY(i);
+      const z = pos.getZ(i);
+
+      if (isFront && z > 0) {
+        const dist = (x - grooveX) / 0.0022;
+        pos.setZ(i, z - 0.00055 * Math.exp(-dist * dist));
+      } else if (!isFront && z < 0) {
+        const dist = (x - grooveX) / 0.0022;
+        pos.setZ(i, z + 0.00055 * Math.exp(-dist * dist));
+      }
+
+      if (isFront) {
+        const u = THREE.MathUtils.clamp((x + bookW / 2) / bookW, 0, 1);
+        const v = THREE.MathUtils.clamp((y + bookH / 2) / bookH, 0, 1);
+        uv.setXY(i, u, v);
+      }
+    }
+    rawGeo.computeVertexNormals();
+    return splitBoardMaterialGroups(rawGeo, isFront ? -1 : 1);
+  };
+
+  cachedBookBaseAssets = {
+    paperEdgeTexture,
+    clothBumpTexture,
+    headbandTexture,
+    endpaperMat,
+    paperMat,
+    headbandMat,
+    concavePaperGeo,
+    frontCoverGeo: buildBoard(true),
+    backBoardGeo: buildBoard(false),
+  };
+  return cachedBookBaseAssets;
+}
+
 export function AdvancedBook3D({
   coverUrl,
   spineColor = '#252f42',
   title = 'The Alchemist',
   author = 'Paulo Coelho',
+  fallbackBgTop = '#1d2b44',
+  fallbackBgBottom = '#101829',
+  fallbackAccent = '#e5c158',
+  fallbackMotif = 'arch',
   position = [0, 0, 0],
   rotation = [0, 0, 0],
   scale = 1.0,
   interactive = true,
+  showFloatingTooltip = true,
   onClick,
+  onHoverChange,
 }: AdvancedBook3DProps) {
   const groupRef = useRef<THREE.Group>(null!);
   const [hovered, setHovered] = useState(false);
@@ -267,28 +651,34 @@ export function AdvancedBook3D({
   // Exact flush thickness between inner board faces (no overlap, no gap)
   const pageT = bookT - boardThick * 2;
 
+  const {
+    clothBumpTexture,
+    endpaperMat,
+    paperMat,
+    headbandMat,
+    concavePaperGeo,
+    frontCoverGeo,
+    backBoardGeo,
+  } = useMemo(
+    () => getSharedBookBaseAssets(bookW, bookH, boardThick, pageH, pageT, spinePaperX, forePaperX),
+    [bookW, bookH, boardThick, pageH, pageT, spinePaperX, forePaperX]
+  );
+
   // =========================================================================
-  // 1. BUILT-IN HIGH-FIDELITY EDITORIAL COVER FALLBACK
+  // 1. BUILT-IN HIGH-FIDELITY EDITORIAL COVER FALLBACK (Cached instantly)
   // =========================================================================
-  const fallbackCoverTexture = useMemo(() => {
-    if (typeof window === 'undefined') return undefined;
-    const dataUrl = createEditorialCoverDataUrl({
-      title,
-      author,
-      bgTop: '#1d2b44',
-      bgBottom: '#101829',
-      accent: '#e5c158',
-      motif: 'arch',
-    });
-    const img = new Image();
-    const tex = new THREE.Texture(img);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    img.onload = () => {
-      tex.needsUpdate = true;
-    };
-    img.src = dataUrl;
-    return tex;
-  }, [title, author]);
+  const fallbackCoverTexture = useMemo(
+    () =>
+      getOrCreateEditorialCoverTexture({
+        title,
+        author,
+        bgTop: fallbackBgTop,
+        bgBottom: fallbackBgBottom,
+        accent: fallbackAccent,
+        motif: fallbackMotif,
+      }),
+    [title, author, fallbackBgTop, fallbackBgBottom, fallbackAccent, fallbackMotif]
+  );
 
   // =========================================================================
   // 2. DYNAMIC COVER IMAGE LOADER (Supports URLs, Data URLs, Blob Uploads)
@@ -356,89 +746,7 @@ export function AdvancedBook3D({
   }, [coverUrl, bookW, bookH]);
 
   // =========================================================================
-  // 3. REALISTIC PAPER LEAF EDGE & WOVEN CLOTH MICRO-TEXTURES
-  // =========================================================================
-  // Page lines stack along Z (mapped to UV.v) so lines run parallel to page sheets!
-  const paperEdgeTexture = useMemo(() => {
-    if (typeof window === 'undefined') return undefined;
-    const canvas = document.createElement('canvas');
-    canvas.width = 256;
-    canvas.height = 1024;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return undefined;
-
-    ctx.fillStyle = '#f8f2e4';
-    ctx.fillRect(0, 0, 256, 1024);
-
-    // Hundreds of crisp paper leaf striations along V (mapped across thickness Z)
-    for (let y = 0; y < 1024; y += 3) {
-      const shade = (Math.sin(y * 0.37) + 1) * 0.5;
-      ctx.fillStyle = shade > 0.5 ? 'rgba(135, 112, 82, 0.22)' : 'rgba(180, 158, 125, 0.14)';
-      ctx.fillRect(0, y, 256, 1.2);
-    }
-    // Signature gathering subtle darker intervals
-    for (let y = 0; y < 1024; y += 32) {
-      ctx.fillStyle = 'rgba(95, 75, 50, 0.16)';
-      ctx.fillRect(0, y, 256, 1.5);
-    }
-
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    return tex;
-  }, []);
-
-  // Subtle woven linen/matte paper bump texture for realistic hardcover tactile sheen
-  const clothBumpTexture = useMemo(() => {
-    if (typeof window === 'undefined') return undefined;
-    const canvas = document.createElement('canvas');
-    canvas.width = 256;
-    canvas.height = 256;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return undefined;
-
-    ctx.fillStyle = '#808080';
-    ctx.fillRect(0, 0, 256, 256);
-    for (let y = 0; y < 256; y += 2) {
-      ctx.fillStyle = y % 4 === 0 ? '#929292' : '#6e6e6e';
-      ctx.fillRect(0, y, 256, 1);
-    }
-    for (let x = 0; x < 256; x += 2) {
-      ctx.fillStyle = x % 4 === 0 ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)';
-      ctx.fillRect(x, 0, 1, 256);
-    }
-
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(6, 9);
-    return tex;
-  }, []);
-
-  // Woven striped headband texture (cream & burgundy/gold heritage trim)
-  const headbandTexture = useMemo(() => {
-    if (typeof window === 'undefined') return undefined;
-    const canvas = document.createElement('canvas');
-    canvas.width = 128;
-    canvas.height = 64;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return undefined;
-
-    for (let x = 0; x < 128; x += 8) {
-      ctx.fillStyle = (x / 8) % 2 === 0 ? '#d8b454' : '#7b242c';
-      ctx.fillRect(x, 0, 8, 64);
-    }
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(3, 1);
-    return tex;
-  }, []);
-
-  // =========================================================================
-  // 4. MATERIALS
+  // 3. PER-BOOK COVER & SPINE MATERIALS (Reusing Shared Geometries & Paper)
   // =========================================================================
   const materials = useMemo(() => {
     const activeCover = loadedCoverTexture || fallbackCoverTexture;
@@ -462,28 +770,6 @@ export function AdvancedBook3D({
       metalness: 0.03,
     });
 
-    // Inner cream endpaper pastedowns inside board overhang
-    const endpaperMat = new THREE.MeshStandardMaterial({
-      color: '#efe7d6',
-      roughness: 0.82,
-      metalness: 0.0,
-    });
-
-    // Striated natural paper text block
-    const paperMat = new THREE.MeshStandardMaterial({
-      map: paperEdgeTexture,
-      color: '#fcf7eb',
-      roughness: 0.88,
-      metalness: 0.01,
-    });
-
-    // Woven striped headband cloth
-    const headbandMat = new THREE.MeshStandardMaterial({
-      map: headbandTexture,
-      roughness: 0.55,
-      metalness: 0.08,
-    });
-
     return {
       frontCoverMat,
       bookClothMat,
@@ -496,293 +782,30 @@ export function AdvancedBook3D({
     fallbackCoverTexture,
     sampledBackColor,
     spineColor,
-    paperEdgeTexture,
     clothBumpTexture,
-    headbandTexture,
+    endpaperMat,
+    paperMat,
+    headbandMat,
   ]);
 
-  // =========================================================================
-  // 5. WATERTIGHT 3D CONCAVE PAPER TEXT BLOCK (CORRECT OUTWARD WINDING!)
-  // =========================================================================
-  const concavePaperGeo = useMemo(() => {
-    const xSegs = 16;
-    const ySegs = 20;
-    const zSegs = 24;
-
-    const halfPH = pageH / 2;
-    const halfPT = pageT / 2;
-    const concavity = 0.0065; // 6.5mm natural fore-edge crescent curve
-
-    const verts: number[] = [];
-    const normals: number[] = [];
-    const uvs: number[] = [];
-    const indices: number[] = [];
-
-    // Helper: (v1 - v0) x (v2 - v0) defines front-face outward normal
-    function addQuad(v0: number, v1: number, v2: number, v3: number) {
-      indices.push(v0, v1, v2, v1, v3, v2);
+  // Reset hover state if book stops being interactive (e.g. exiting shelf inspection)
+  useEffect(() => {
+    if (!interactive && hovered) {
+      setHovered(false);
+      if (onHoverChange) onHoverChange(false);
+      document.body.style.cursor = 'auto';
     }
+  }, [interactive, hovered, onHoverChange]);
 
-    // A. Fore-edge (+X curved face) -> (v1-v0)=+Y, (v2-v0)=+Z => (+Y)x(+Z) = +X (OUTWARD)
-    const foreStart = verts.length / 3;
-    for (let iy = 0; iy <= ySegs; iy++) {
-      const yNorm = iy / ySegs;
-      const y = -halfPH + yNorm * pageH;
-      for (let iz = 0; iz <= zSegs; iz++) {
-        const zNorm = iz / zSegs;
-        const z = -halfPT + zNorm * pageT;
-        const normZ = z / halfPT;
-        const curveX = forePaperX - concavity * (1.0 - normZ * normZ);
-
-        verts.push(curveX, y, z);
-        const dXdz = (2 * concavity * normZ) / halfPT;
-        const n = new THREE.Vector3(1, 0, -dXdz).normalize();
-        normals.push(n.x, n.y, n.z);
-        // v = zNorm * 2 repeats fine vertical leaf striations across thickness Z!
-        uvs.push(yNorm, zNorm * 1.8);
-      }
-    }
-    for (let iy = 0; iy < ySegs; iy++) {
-      for (let iz = 0; iz < zSegs; iz++) {
-        const row1 = foreStart + iy * (zSegs + 1);
-        const row2 = foreStart + (iy + 1) * (zSegs + 1);
-        addQuad(row1 + iz, row2 + iz, row1 + iz + 1, row2 + iz + 1);
-      }
-    }
-
-    // B. Top head (+Y face) -> (v1-v0)=+Z, (v2-v0)=+X => (+Z)x(+X) = +Y (OUTWARD)
-    const topStart = verts.length / 3;
-    for (let ix = 0; ix <= xSegs; ix++) {
-      const xNorm = ix / xSegs;
-      for (let iz = 0; iz <= zSegs; iz++) {
-        const zNorm = iz / zSegs;
-        const z = -halfPT + zNorm * pageT;
-        const normZ = z / halfPT;
-        const endX = forePaperX - concavity * (1.0 - normZ * normZ);
-        const x = spinePaperX + xNorm * (endX - spinePaperX);
-
-        verts.push(x, halfPH, z);
-        normals.push(0, 1, 0);
-        uvs.push(xNorm, zNorm * 1.8);
-      }
-    }
-    for (let ix = 0; ix < xSegs; ix++) {
-      for (let iz = 0; iz < zSegs; iz++) {
-        const row1 = topStart + ix * (zSegs + 1);
-        const row2 = topStart + (ix + 1) * (zSegs + 1);
-        addQuad(row1 + iz, row1 + iz + 1, row2 + iz, row2 + iz + 1);
-      }
-    }
-
-    // C. Bottom tail (-Y face) -> (v1-v0)=+X, (v2-v0)=+Z => (+X)x(+Z) = -Y (OUTWARD)
-    const botStart = verts.length / 3;
-    for (let ix = 0; ix <= xSegs; ix++) {
-      const xNorm = ix / xSegs;
-      for (let iz = 0; iz <= zSegs; iz++) {
-        const zNorm = iz / zSegs;
-        const z = -halfPT + zNorm * pageT;
-        const normZ = z / halfPT;
-        const endX = forePaperX - concavity * (1.0 - normZ * normZ);
-        const x = spinePaperX + xNorm * (endX - spinePaperX);
-
-        verts.push(x, -halfPH, z);
-        normals.push(0, -1, 0);
-        uvs.push(xNorm, zNorm * 1.8);
-      }
-    }
-    for (let ix = 0; ix < xSegs; ix++) {
-      for (let iz = 0; iz < zSegs; iz++) {
-        const row1 = botStart + ix * (zSegs + 1);
-        const row2 = botStart + (ix + 1) * (zSegs + 1);
-        addQuad(row1 + iz, row2 + iz, row1 + iz + 1, row2 + iz + 1);
-      }
-    }
-
-    // D. Spine inner face (-X) -> (v1-v0)=+Z, (v2-v0)=+Y => (+Z)x(+Y) = -X (OUTWARD)
-    const spineStart = verts.length / 3;
-    for (let iy = 0; iy <= ySegs; iy++) {
-      const yNorm = iy / ySegs;
-      const y = -halfPH + yNorm * pageH;
-      for (let iz = 0; iz <= zSegs; iz++) {
-        const zNorm = iz / zSegs;
-        const z = -halfPT + zNorm * pageT;
-        verts.push(spinePaperX, y, z);
-        normals.push(-1, 0, 0);
-        uvs.push(yNorm, zNorm);
-      }
-    }
-    for (let iy = 0; iy < ySegs; iy++) {
-      for (let iz = 0; iz < zSegs; iz++) {
-        const row1 = spineStart + iy * (zSegs + 1);
-        const row2 = spineStart + (iy + 1) * (zSegs + 1);
-        addQuad(row1 + iz, row1 + iz + 1, row2 + iz, row2 + iz + 1);
-      }
-    }
-
-    // Internal +Z / -Z faces omitted because boards sit flush at ±halfPT (zero coplanar z-fighting)
-
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
-    geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-    geo.setIndex(indices);
-    return geo;
-  }, [pageH, pageT, spinePaperX, forePaperX]);
-
-  // Helper: split an ExtrudeGeometry into 2 non-overlapping material groups:
-  // Group 0 = outer face + bevels + rim edges; Group 1 = flat inner pastedown face
-  function splitBoardMaterialGroups(geo: THREE.BufferGeometry, innerNormalSignZ: 1 | -1) {
-    const pos = geo.attributes.position;
-    const norm = geo.attributes.normal;
-    const uv = geo.attributes.uv;
-    const triCount = pos.count / 3;
-
-    const outerVerts: number[] = [];
-    const outerNorms: number[] = [];
-    const outerUvs: number[] = [];
-    const innerVerts: number[] = [];
-    const innerNorms: number[] = [];
-    const innerUvs: number[] = [];
-
-    for (let t = 0; t < triCount; t++) {
-      const i0 = t * 3;
-      const nz = (norm.getZ(i0) + norm.getZ(i0 + 1) + norm.getZ(i0 + 2)) / 3;
-      const isInner = innerNormalSignZ < 0 ? nz < -0.9 : nz > 0.9;
-      const targetPos = isInner ? innerVerts : outerVerts;
-      const targetNorm = isInner ? innerNorms : outerNorms;
-      const targetUv = isInner ? innerUvs : outerUvs;
-
-      for (let k = 0; k < 3; k++) {
-        const idx = i0 + k;
-        targetPos.push(pos.getX(idx), pos.getY(idx), pos.getZ(idx));
-        targetNorm.push(norm.getX(idx), norm.getY(idx), norm.getZ(idx));
-        targetUv.push(uv.getX(idx), uv.getY(idx));
-      }
-    }
-
-    const combinedPos = new Float32Array([...outerVerts, ...innerVerts]);
-    const combinedNorm = new Float32Array([...outerNorms, ...innerNorms]);
-    const combinedUv = new Float32Array([...outerUvs, ...innerUvs]);
-
-    const outGeo = new THREE.BufferGeometry();
-    outGeo.setAttribute('position', new THREE.BufferAttribute(combinedPos, 3));
-    outGeo.setAttribute('normal', new THREE.BufferAttribute(combinedNorm, 3));
-    outGeo.setAttribute('uv', new THREE.BufferAttribute(combinedUv, 2));
-    outGeo.clearGroups();
-    outGeo.addGroup(0, outerVerts.length / 3, 0);
-    outGeo.addGroup(outerVerts.length / 3, innerVerts.length / 3, 1);
-    return outGeo;
-  }
-
-  // =========================================================================
-  // 6. SCULPTED BEVELED FRONT COVER BOARD WITH SMOOTH HINGE INDENT & CLEAN UVs
-  // Exact outer dimensions bookW x bookH x boardThick (zero coplanar planes)
-  // =========================================================================
-  const frontCoverGeo = useMemo(() => {
-    const bevelSize = 0.0008;
-    const bevelThick = 0.0007;
-    const cornerR = 0.0028;
-    const xMin = -bookW / 2 + bevelSize;
-    const xMax = bookW / 2 - bevelSize;
-    const yMin = -bookH / 2 + bevelSize;
-    const yMax = bookH / 2 - bevelSize;
-
-    const shape = new THREE.Shape();
-    shape.moveTo(xMin, yMin);
-    shape.lineTo(xMin, yMax);
-    shape.lineTo(xMax - cornerR, yMax);
-    shape.quadraticCurveTo(xMax, yMax, xMax, yMax - cornerR);
-    shape.lineTo(xMax, yMin + cornerR);
-    shape.quadraticCurveTo(xMax, yMin, xMax - cornerR, yMin);
-    shape.lineTo(xMin, yMin);
-
-    const rawGeo = new THREE.ExtrudeGeometry(shape, {
-      steps: 1,
-      depth: boardThick - bevelThick * 2,
-      bevelEnabled: true,
-      bevelThickness: bevelThick,
-      bevelSize,
-      bevelSegments: 4,
-      curveSegments: 8,
-    });
-    rawGeo.center();
-
-    const pos = rawGeo.attributes.position;
-    const uv = rawGeo.attributes.uv;
-    const grooveX = -bookW / 2 + 0.0115;
-
-    for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i);
-      const y = pos.getY(i);
-      const z = pos.getZ(i);
-
-      if (z > 0) {
-        const dist = (x - grooveX) / 0.0022;
-        pos.setZ(i, z - 0.00055 * Math.exp(-dist * dist));
-      }
-
-      const u = THREE.MathUtils.clamp((x + bookW / 2) / bookW, 0, 1);
-      const v = THREE.MathUtils.clamp((y + bookH / 2) / bookH, 0, 1);
-      uv.setXY(i, u, v);
-    }
-    rawGeo.computeVertexNormals();
-    return splitBoardMaterialGroups(rawGeo, -1);
-  }, [bookW, bookH, boardThick]);
-
-  // =========================================================================
-  // 7. BEVELED BACK COVER BOARD (with single-surface inner endpaper group)
-  // =========================================================================
-  const backBoardGeo = useMemo(() => {
-    const bevelSize = 0.0008;
-    const bevelThick = 0.0007;
-    const cornerR = 0.0028;
-    const xMin = -bookW / 2 + bevelSize;
-    const xMax = bookW / 2 - bevelSize;
-    const yMin = -bookH / 2 + bevelSize;
-    const yMax = bookH / 2 - bevelSize;
-
-    const shape = new THREE.Shape();
-    shape.moveTo(xMin, yMin);
-    shape.lineTo(xMin, yMax);
-    shape.lineTo(xMax - cornerR, yMax);
-    shape.quadraticCurveTo(xMax, yMax, xMax, yMax - cornerR);
-    shape.lineTo(xMax, yMin + cornerR);
-    shape.quadraticCurveTo(xMax, yMin, xMax - cornerR, yMin);
-    shape.lineTo(xMin, yMin);
-
-    const rawGeo = new THREE.ExtrudeGeometry(shape, {
-      steps: 1,
-      depth: boardThick - bevelThick * 2,
-      bevelEnabled: true,
-      bevelThickness: bevelThick,
-      bevelSize,
-      bevelSegments: 4,
-      curveSegments: 8,
-    });
-    rawGeo.center();
-
-    const pos = rawGeo.attributes.position;
-    const grooveX = -bookW / 2 + 0.0115;
-    for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i);
-      const z = pos.getZ(i);
-      if (z < 0) {
-        const dist = (x - grooveX) / 0.0022;
-        pos.setZ(i, z + 0.00055 * Math.exp(-dist * dist));
-      }
-    }
-    rawGeo.computeVertexNormals();
-    return splitBoardMaterialGroups(rawGeo, 1);
-  }, [bookW, bookH, boardThick]);
-
-  // Smooth hover pop-out interaction
+  // Smooth hover pop-out interaction (only active when shelf is inspected / interactive=true)
   useFrame((_, delta) => {
-    if (!groupRef.current || !interactive) return;
+    if (!groupRef.current) return;
 
-    const targetZ = hovered ? position[2] + 0.06 : position[2];
-    const targetY = hovered ? position[1] + 0.015 : position[1];
-    const targetRotX = hovered ? rotation[0] + 0.05 : rotation[0];
-    const targetRotY = hovered ? rotation[1] - 0.08 : rotation[1];
+    const isActiveHover = interactive && hovered;
+    const targetZ = isActiveHover ? position[2] + 0.06 : position[2];
+    const targetY = isActiveHover ? position[1] + 0.015 : position[1];
+    const targetRotX = isActiveHover ? rotation[0] + 0.05 : rotation[0];
+    const targetRotY = isActiveHover ? rotation[1] - 0.08 : rotation[1];
 
     const lerpSpeed = Math.min(1, delta * 14);
     groupRef.current.position.z = THREE.MathUtils.lerp(groupRef.current.position.z, targetZ, lerpSpeed);
@@ -806,10 +829,14 @@ export function AdvancedBook3D({
         if (!interactive) return;
         e.stopPropagation();
         setHovered(true);
+        if (onHoverChange) onHoverChange(true);
         document.body.style.cursor = 'pointer';
       }}
-      onPointerOut={() => {
+      onPointerOut={(e) => {
+        if (!interactive) return;
+        e.stopPropagation();
         setHovered(false);
+        if (onHoverChange) onHoverChange(false);
         document.body.style.cursor = 'auto';
       }}
     >
@@ -877,8 +904,8 @@ export function AdvancedBook3D({
         </mesh>
       </group>
 
-      {/* 5. Interactive Hover Tooltip */}
-      {hovered && interactive && (
+      {/* 5. Optional Interactive Floating Hover Tooltip */}
+      {hovered && interactive && showFloatingTooltip && (
         <Html
           position={[0, bookH / 2 + 0.08, bookT / 2 + 0.02]}
           center

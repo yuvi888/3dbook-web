@@ -237,8 +237,154 @@ function buildFlutedOffWhiteBackGeometry(width: number, height: number, depth: n
   return geo;
 }
 
-export function RealisticModernWhiteBookshelf3D({ autoRotate }: { autoRotate: boolean }) {
-  const groupRef = useRef<any>();
+type SharedWhiteBookshelfAssets = {
+  whiteLacquerMat: THREE.MeshPhysicalMaterial;
+  offWhiteFlutedMat: THREE.MeshStandardMaterial;
+  rearOffWhiteMat: THREE.MeshStandardMaterial;
+  champagneTrimMat: THREE.MeshStandardMaterial;
+  ledDiffuserMat: THREE.MeshStandardMaterial;
+  mountMetalMat: THREE.MeshStandardMaterial;
+  portalGeo: THREE.BufferGeometry;
+  trimCollarGeo: THREE.BufferGeometry;
+  flutedBackGeo: THREE.BufferGeometry;
+  shelves: Array<{ key: string; geo: THREE.BufferGeometry; pos: [number, number, number] }>;
+  dividers: Array<{ key: string; geo: THREE.BufferGeometry; pos: [number, number, number] }>;
+  brassInlays: Array<{ key: string; pos: [number, number, number]; w: number }>;
+  ledStrips: Array<{ pos: [number, number, number]; args: [number, number, number]; key: string }>;
+  ledLights: Array<{ pos: [number, number, number]; intensity: number; distance: number; key: string }>;
+};
+
+let cachedWhiteBookshelfAssets: SharedWhiteBookshelfAssets | null = null;
+
+function getSharedWhiteBookshelfAssets(): SharedWhiteBookshelfAssets {
+  if (cachedWhiteBookshelfAssets) return cachedWhiteBookshelfAssets;
+
+  const { whiteMap, normalMap, offWhiteMap } = createModernShelfTextures();
+
+  const whiteMat = new THREE.MeshPhysicalMaterial({
+    map: whiteMap,
+    normalMap,
+    normalScale: new THREE.Vector2(0.26, 0.26),
+    color: new THREE.Color('#faf9f5'),
+    roughness: 0.30,
+    metalness: 0.02,
+    clearcoat: 0.34,
+    clearcoatRoughness: 0.28,
+  });
+
+  const offWhiteMat = new THREE.MeshStandardMaterial({
+    map: offWhiteMap,
+    normalMap,
+    normalScale: new THREE.Vector2(0.14, 0.14),
+    color: new THREE.Color('#edeae2'),
+    roughness: 0.62,
+    metalness: 0.02,
+  });
+
+  const rearMat = new THREE.MeshStandardMaterial({
+    map: offWhiteMap,
+    color: new THREE.Color('#f1efe8'),
+    roughness: 0.52,
+    metalness: 0.01,
+  });
+
+  const champagneMat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color('#d2c2a3'),
+    roughness: 0.28,
+    metalness: 0.82,
+  });
+
+  const ledMat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color('#fff9ed'),
+    emissive: new THREE.Color('#ffe09e'),
+    emissiveIntensity: 2.2,
+    roughness: 0.18,
+  });
+
+  const mountMat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color('#d5d1c8'),
+    roughness: 0.36,
+    metalness: 0.45,
+  });
+
+  // Outer Rounded Architectural Portal Frame (1.70m x 1.44m x 0.32m) with Champagne Bezel Trim
+  const pGeo = buildHollowRoundedFrameGeometry(1.700, 1.440, 1.616, 1.356, 0.320, 0.044, 0.016, 0.004);
+  const tGeo = buildHollowRoundedFrameGeometry(1.636, 1.376, 1.614, 1.354, 0.007, 0.020, 0.016, 0.001);
+  const fBackGeo = buildFlutedOffWhiteBackGeometry(1.622, 1.362, 0.018);
+
+  // Tiered architectural depths: Portal (+0.160) -> Knife-edge Shelves (+0.150) -> Recessed Dividers (+0.138)
+  const shelfList = [
+    { key: 'shelf-3', geo: buildKnifeEdgeShelfGeometry(1.620, 0.028, -0.128, 0.150), pos: [0.0, 0.360, 0.0] as [number, number, number] },
+    { key: 'shelf-2', geo: buildKnifeEdgeShelfGeometry(1.196, 0.028, -0.128, 0.150), pos: [0.214, 0.025, 0.0] as [number, number, number] },
+    { key: 'shelf-1', geo: buildKnifeEdgeShelfGeometry(1.216, 0.028, -0.128, 0.150), pos: [-0.204, -0.320, 0.0] as [number, number, number] },
+  ];
+
+  const divList = [
+    { key: 'div-row4', geo: buildChamferedDividerGeometry(0.024, 0.320, -0.128, 0.138), pos: [0.08, 0.522, 0.0] as [number, number, number] },
+    { key: 'div-tall-left', geo: buildChamferedDividerGeometry(0.024, 0.676, -0.128, 0.138), pos: [-0.38, 0.020, 0.0] as [number, number, number] },
+    { key: 'div-tall-right', geo: buildChamferedDividerGeometry(0.024, 0.706, -0.128, 0.138), pos: [0.40, -0.329, 0.0] as [number, number, number] },
+    { key: 'div-row3', geo: buildChamferedDividerGeometry(0.024, 0.330, -0.128, 0.138), pos: [0.26, 0.193, 0.0] as [number, number, number] },
+    { key: 'div-row1', geo: buildChamferedDividerGeometry(0.024, 0.358, -0.128, 0.138), pos: [-0.22, -0.501, 0.0] as [number, number, number] },
+  ];
+
+  const inlays = [
+    { key: 'inlay-3', pos: [0.0, 0.364, 0.150] as [number, number, number], w: 1.612 },
+    { key: 'inlay-2', pos: [0.214, 0.029, 0.150] as [number, number, number], w: 1.186 },
+    { key: 'inlay-1', pos: [-0.204, -0.316, 0.150] as [number, number, number], w: 1.206 },
+  ];
+
+  const strips: Array<{ pos: [number, number, number]; args: [number, number, number]; key: string }> = [
+    { key: 'led-4a', pos: [-0.36, 0.676, 0.025], args: [0.80, 0.005, 0.014] },
+    { key: 'led-4b', pos: [0.44, 0.676, 0.025], args: [0.64, 0.005, 0.014] },
+    { key: 'led-tall-l', pos: [-0.59, 0.344, 0.025], args: [0.36, 0.005, 0.014] },
+    { key: 'led-3a', pos: [-0.06, 0.344, 0.025], args: [0.56, 0.005, 0.014] },
+    { key: 'led-3b', pos: [0.53, 0.344, 0.025], args: [0.47, 0.005, 0.014] },
+    { key: 'led-2-wide', pos: [0.01, 0.009, 0.025], args: [0.70, 0.005, 0.014] },
+    { key: 'led-tall-r', pos: [0.60, 0.009, 0.025], args: [0.34, 0.005, 0.014] },
+    { key: 'led-1a', pos: [-0.51, -0.336, 0.025], args: [0.52, 0.005, 0.014] },
+    { key: 'led-1b', pos: [0.09, -0.336, 0.025], args: [0.54, 0.005, 0.014] },
+    { key: 'led-v-left', pos: [-0.804, 0.020, -0.095], args: [0.006, 0.58, 0.010] },
+    { key: 'led-v-right', pos: [0.804, -0.330, -0.095], args: [0.006, 0.60, 0.010] },
+  ];
+
+  const lights: Array<{ pos: [number, number, number]; intensity: number; distance: number; key: string }> = [
+    { key: 'pt-top-l', pos: [-0.36, 0.52, 0.24], intensity: 0.52, distance: 1.9 },
+    { key: 'pt-top-r', pos: [0.44, 0.52, 0.24], intensity: 0.52, distance: 1.9 },
+    { key: 'pt-tall-l', pos: [-0.59, 0.06, 0.24], intensity: 0.55, distance: 1.9 },
+    { key: 'pt-mid-c', pos: [0.04, 0.04, 0.26], intensity: 0.58, distance: 2.0 },
+    { key: 'pt-mid-r', pos: [0.53, 0.18, 0.24], intensity: 0.45, distance: 1.8 },
+    { key: 'pt-tall-r', pos: [0.60, -0.32, 0.24], intensity: 0.55, distance: 1.9 },
+    { key: 'pt-bot-l', pos: [-0.51, -0.50, 0.24], intensity: 0.48, distance: 1.8 },
+    { key: 'pt-bot-c', pos: [0.09, -0.50, 0.24], intensity: 0.48, distance: 1.8 },
+  ];
+
+  cachedWhiteBookshelfAssets = {
+    whiteLacquerMat: whiteMat,
+    offWhiteFlutedMat: offWhiteMat,
+    rearOffWhiteMat: rearMat,
+    champagneTrimMat: champagneMat,
+    ledDiffuserMat: ledMat,
+    mountMetalMat: mountMat,
+    portalGeo: pGeo,
+    trimCollarGeo: tGeo,
+    flutedBackGeo: fBackGeo,
+    shelves: shelfList,
+    dividers: divList,
+    brassInlays: inlays,
+    ledStrips: strips,
+    ledLights: lights,
+  };
+  return cachedWhiteBookshelfAssets;
+}
+
+export function RealisticModernWhiteBookshelf3D({
+  autoRotate = false,
+  showPointLights = true,
+}: {
+  autoRotate?: boolean;
+  showPointLights?: boolean;
+}) {
+  const groupRef = useRef<THREE.Group>(null!);
 
   useFrame((_, delta) => {
     if (autoRotate && groupRef.current) {
@@ -261,128 +407,7 @@ export function RealisticModernWhiteBookshelf3D({ autoRotate }: { autoRotate: bo
     brassInlays,
     ledStrips,
     ledLights,
-  } = useMemo(() => {
-    const { whiteMap, normalMap, offWhiteMap } = createModernShelfTextures();
-
-    const whiteMat = new THREE.MeshPhysicalMaterial({
-      map: whiteMap,
-      normalMap,
-      normalScale: new THREE.Vector2(0.26, 0.26),
-      color: new THREE.Color('#faf9f5'),
-      roughness: 0.30,
-      metalness: 0.02,
-      clearcoat: 0.34,
-      clearcoatRoughness: 0.28,
-    });
-
-    const offWhiteMat = new THREE.MeshStandardMaterial({
-      map: offWhiteMap,
-      normalMap,
-      normalScale: new THREE.Vector2(0.14, 0.14),
-      color: new THREE.Color('#edeae2'),
-      roughness: 0.62,
-      metalness: 0.02,
-    });
-
-    const rearMat = new THREE.MeshStandardMaterial({
-      map: offWhiteMap,
-      color: new THREE.Color('#f1efe8'),
-      roughness: 0.52,
-      metalness: 0.01,
-    });
-
-    const champagneMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color('#d2c2a3'),
-      roughness: 0.28,
-      metalness: 0.82,
-    });
-
-    const ledMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color('#fff9ed'),
-      emissive: new THREE.Color('#ffe09e'),
-      emissiveIntensity: 2.2,
-      roughness: 0.18,
-    });
-
-    const mountMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color('#d5d1c8'),
-      roughness: 0.36,
-      metalness: 0.45,
-    });
-
-    // Outer Rounded Architectural Portal Frame (1.70m x 1.44m x 0.32m) with Champagne Bezel Trim
-    const pGeo = buildHollowRoundedFrameGeometry(1.700, 1.440, 1.616, 1.356, 0.320, 0.044, 0.016, 0.004);
-    const tGeo = buildHollowRoundedFrameGeometry(1.636, 1.376, 1.614, 1.354, 0.007, 0.020, 0.016, 0.001);
-    const fBackGeo = buildFlutedOffWhiteBackGeometry(1.622, 1.362, 0.018);
-
-    // Tiered architectural depths: Portal (+0.160) -> Knife-edge Shelves (+0.150) -> Recessed Dividers (+0.138)
-    const shelfList = [
-      { key: 'shelf-3', geo: buildKnifeEdgeShelfGeometry(1.620, 0.028, -0.128, 0.150), pos: [0.0, 0.360, 0.0] as [number, number, number] },
-      { key: 'shelf-2', geo: buildKnifeEdgeShelfGeometry(1.196, 0.028, -0.128, 0.150), pos: [0.214, 0.025, 0.0] as [number, number, number] },
-      { key: 'shelf-1', geo: buildKnifeEdgeShelfGeometry(1.216, 0.028, -0.128, 0.150), pos: [-0.204, -0.320, 0.0] as [number, number, number] },
-    ];
-
-    const divList = [
-      { key: 'div-row4', geo: buildChamferedDividerGeometry(0.024, 0.320, -0.128, 0.138), pos: [0.08, 0.522, 0.0] as [number, number, number] },
-      { key: 'div-tall-left', geo: buildChamferedDividerGeometry(0.024, 0.676, -0.128, 0.138), pos: [-0.38, 0.020, 0.0] as [number, number, number] },
-      { key: 'div-tall-right', geo: buildChamferedDividerGeometry(0.024, 0.706, -0.128, 0.138), pos: [0.40, -0.329, 0.0] as [number, number, number] },
-      { key: 'div-row3', geo: buildChamferedDividerGeometry(0.024, 0.330, -0.128, 0.138), pos: [0.26, 0.193, 0.0] as [number, number, number] },
-      { key: 'div-row1', geo: buildChamferedDividerGeometry(0.024, 0.358, -0.128, 0.138), pos: [-0.22, -0.501, 0.0] as [number, number, number] },
-    ];
-
-    // Precision hairline champagne-brass reveals along each knife-edge shelf front lip
-    const inlays = [
-      { key: 'inlay-3', pos: [0.0, 0.364, 0.150] as [number, number, number], w: 1.612 },
-      { key: 'inlay-2', pos: [0.214, 0.029, 0.150] as [number, number, number], w: 1.186 },
-      { key: 'inlay-1', pos: [-0.204, -0.316, 0.150] as [number, number, number], w: 1.206 },
-    ];
-
-    // Brighter full-span recessed warm linear LED diffusers (12mm wide) tucked nicely under top soffits & tall alcoves
-    const strips: Array<{ pos: [number, number, number]; args: [number, number, number]; key: string }> = [
-      // Horizontal under-shelf linear diffusers (z = +0.025 behind the chamfer lip for broad bright bay wash)
-      { key: 'led-4a', pos: [-0.36, 0.676, 0.025], args: [0.80, 0.005, 0.014] },
-      { key: 'led-4b', pos: [0.44, 0.676, 0.025], args: [0.64, 0.005, 0.014] },
-      { key: 'led-tall-l', pos: [-0.59, 0.344, 0.025], args: [0.36, 0.005, 0.014] },
-      { key: 'led-3a', pos: [-0.06, 0.344, 0.025], args: [0.56, 0.005, 0.014] },
-      { key: 'led-3b', pos: [0.53, 0.344, 0.025], args: [0.47, 0.005, 0.014] },
-      { key: 'led-2-wide', pos: [0.01, 0.009, 0.025], args: [0.70, 0.005, 0.014] },
-      { key: 'led-tall-r', pos: [0.60, 0.009, 0.025], args: [0.34, 0.005, 0.014] },
-      { key: 'led-1a', pos: [-0.51, -0.336, 0.025], args: [0.52, 0.005, 0.014] },
-      { key: 'led-1b', pos: [0.09, -0.336, 0.025], args: [0.54, 0.005, 0.014] },
-      // Architectural vertical ambient side LED strips inside Tall Left & Tall Right double-height bays
-      { key: 'led-v-left', pos: [-0.804, 0.020, -0.095], args: [0.006, 0.58, 0.010] },
-      { key: 'led-v-right', pos: [0.804, -0.330, -0.095], args: [0.006, 0.60, 0.010] },
-    ];
-
-    // Increased warm diffused compartment fill lighting (smooth, bright & inviting without wall hotspots)
-    const lights: Array<{ pos: [number, number, number]; intensity: number; distance: number; key: string }> = [
-      { key: 'pt-top-l', pos: [-0.36, 0.52, 0.24], intensity: 0.52, distance: 1.9 },
-      { key: 'pt-top-r', pos: [0.44, 0.52, 0.24], intensity: 0.52, distance: 1.9 },
-      { key: 'pt-tall-l', pos: [-0.59, 0.06, 0.24], intensity: 0.55, distance: 1.9 },
-      { key: 'pt-mid-c', pos: [0.04, 0.04, 0.26], intensity: 0.58, distance: 2.0 },
-      { key: 'pt-mid-r', pos: [0.53, 0.18, 0.24], intensity: 0.45, distance: 1.8 },
-      { key: 'pt-tall-r', pos: [0.60, -0.32, 0.24], intensity: 0.55, distance: 1.9 },
-      { key: 'pt-bot-l', pos: [-0.51, -0.50, 0.24], intensity: 0.48, distance: 1.8 },
-      { key: 'pt-bot-c', pos: [0.09, -0.50, 0.24], intensity: 0.48, distance: 1.8 },
-    ];
-
-    return {
-      whiteLacquerMat: whiteMat,
-      offWhiteFlutedMat: offWhiteMat,
-      rearOffWhiteMat: rearMat,
-      champagneTrimMat: champagneMat,
-      ledDiffuserMat: ledMat,
-      mountMetalMat: mountMat,
-      portalGeo: pGeo,
-      trimCollarGeo: tGeo,
-      flutedBackGeo: fBackGeo,
-      shelves: shelfList,
-      dividers: divList,
-      brassInlays: inlays,
-      ledStrips: strips,
-      ledLights: lights,
-    };
-  }, []);
+  } = useMemo(() => getSharedWhiteBookshelfAssets(), []);
 
   return (
     <group ref={groupRef} position={[0, 0.0, 0]}>
@@ -437,9 +462,10 @@ export function RealisticModernWhiteBookshelf3D({ autoRotate }: { autoRotate: bo
         </mesh>
       ))}
 
-      {ledLights.map((l) => (
-        <pointLight key={l.key} position={l.pos} color="#ffe6ba" intensity={l.intensity} distance={l.distance} decay={1.35} />
-      ))}
+      {showPointLights &&
+        ledLights.map((l) => (
+          <pointLight key={l.key} position={l.pos} color="#ffe6ba" intensity={l.intensity} distance={l.distance} decay={1.35} />
+        ))}
     </group>
   );
 }
