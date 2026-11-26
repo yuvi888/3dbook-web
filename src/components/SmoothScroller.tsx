@@ -7,21 +7,32 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
 gsap.registerPlugin(ScrollTrigger);
 
+declare global {
+  interface Window {
+    __yshelfScroll?: number;
+  }
+}
+
 export default function SmoothScroller({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const lenis = new Lenis({
-      duration: 0.68,
-      easing: (t: number) => 1 - Math.pow(1 - t, 3.2),
-      wheelMultiplier: 1.55,
-      touchMultiplier: 1.8,
+      lerp: 0.068,
+      wheelMultiplier: 0.82,
+      touchMultiplier: 1.15,
       smoothWheel: true,
     });
 
-    const onScroll = () => ScrollTrigger.update();
+    window.__yshelfScroll = lenis.scroll ?? window.scrollY;
+
+    const onScroll = () => {
+      window.__yshelfScroll = lenis.scroll;
+      ScrollTrigger.update();
+    };
     lenis.on('scroll', onScroll);
 
     const onTick = (time: number) => {
       lenis.raf(time * 1000);
+      window.__yshelfScroll = lenis.scroll;
     };
     gsap.ticker.add(onTick);
     gsap.ticker.lagSmoothing(0);
@@ -29,6 +40,7 @@ export default function SmoothScroller({ children }: { children: React.ReactNode
     return () => {
       lenis.off('scroll', onScroll);
       lenis.destroy();
+      delete window.__yshelfScroll;
       gsap.ticker.remove(onTick);
       ScrollTrigger.getAll().forEach((trigger) => trigger.kill());
     };

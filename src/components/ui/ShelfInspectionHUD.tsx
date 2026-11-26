@@ -20,20 +20,21 @@ export function ShelfInspectionHUD({
 }: ShelfInspectionHUDProps) {
   const progressBarRef = useRef<HTMLDivElement>(null);
 
-  // Sync progress bar width directly at 120Hz without causing React re-renders
+  // Sync progress bar width directly with sub-pixel Lenis scroll at display refresh rate
   useEffect(() => {
+    let rafId = 0;
     const syncProgress = () => {
-      if (!progressBarRef.current) return;
-      const maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
-      const pct = Math.min(100, Math.max(0, (window.scrollY / maxScroll) * 100));
-      progressBarRef.current.style.width = `${pct}%`;
+      if (progressBarRef.current) {
+        const maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+        const scrollY = (window as { __yshelfScroll?: number }).__yshelfScroll ?? window.scrollY;
+        const pct = Math.min(100, Math.max(0, (scrollY / maxScroll) * 100));
+        progressBarRef.current.style.width = `${pct.toFixed(3)}%`;
+      }
+      rafId = window.requestAnimationFrame(syncProgress);
     };
-    syncProgress();
-    window.addEventListener('scroll', syncProgress, { passive: true });
-    window.addEventListener('resize', syncProgress, { passive: true });
+    rafId = window.requestAnimationFrame(syncProgress);
     return () => {
-      window.removeEventListener('scroll', syncProgress);
-      window.removeEventListener('resize', syncProgress);
+      window.cancelAnimationFrame(rafId);
     };
   }, [inspectedShelf]);
 

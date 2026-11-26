@@ -22,31 +22,36 @@ export default function Home() {
   const [isInspecting, setIsInspecting] = useState(false);
   const heroOverlayRef = useRef<HTMLDivElement>(null);
 
-  // Instant zero-React-rerender scroll driver for hero title (glides straight up immediately on slight scroll!)
+  // Smooth sub-pixel rAF driver for hero title (glides smoothly up on gentle scroll with zero CSS jitter)
   useEffect(() => {
+    let rafId = 0;
+
     const syncHeroTransform = () => {
-      if (!heroOverlayRef.current) return;
-      if (isInspecting) {
-        heroOverlayRef.current.style.opacity = '0';
-        heroOverlayRef.current.style.visibility = 'hidden';
-        return;
+      const el = heroOverlayRef.current;
+      if (el) {
+        if (isInspecting) {
+          el.style.opacity = '0';
+          el.style.visibility = 'hidden';
+        } else {
+          const scrollY = window.__yshelfScroll ?? window.scrollY;
+          // Smoothly glides upward over the first ~220px of normal-paced scroll
+          const p = Math.min(1, Math.max(0, scrollY / 220));
+          const ease = 1 - Math.pow(1 - p, 2.2);
+          const opacity = Math.max(0, 1 - ease * 1.15);
+          const translateY = -ease * 260;
+          const scale = 1 + ease * 0.08;
+
+          el.style.visibility = opacity <= 0.01 ? 'hidden' : 'visible';
+          el.style.opacity = String(opacity);
+          el.style.transform = `translate3d(0, ${translateY.toFixed(2)}px, 0) scale(${scale.toFixed(4)})`;
+        }
       }
-
-      // Responds immediately within the first 90px of scroll (~1 light wheel flick)
-      const p = Math.min(1, Math.max(0, window.scrollY / 90));
-      const opacity = Math.max(0, 1 - p * 1.15);
-      const translateY = -p * 280;
-      const scale = 1 + p * 0.1;
-
-      heroOverlayRef.current.style.visibility = opacity <= 0.01 ? 'hidden' : 'visible';
-      heroOverlayRef.current.style.opacity = String(opacity);
-      heroOverlayRef.current.style.transform = `translate3d(0, ${translateY}px, 0) scale(${scale})`;
+      rafId = window.requestAnimationFrame(syncHeroTransform);
     };
 
-    syncHeroTransform();
-    window.addEventListener('scroll', syncHeroTransform, { passive: true });
+    rafId = window.requestAnimationFrame(syncHeroTransform);
     return () => {
-      window.removeEventListener('scroll', syncHeroTransform);
+      window.cancelAnimationFrame(rafId);
     };
   }, [isInspecting]);
 
@@ -92,11 +97,11 @@ export default function Home() {
         </header>
 
         {/* ============================================================== */}
-        {/* STYLISH STACKED HERO WELCOME TITLE (Unified Font & Instant Up) */}
+        {/* STYLISH STACKED HERO WELCOME TITLE (Sub-pixel smooth glide)     */}
         {/* ============================================================== */}
         <div
           ref={heroOverlayRef}
-          className="fixed inset-0 z-20 flex flex-col items-center justify-center pointer-events-none px-6 text-center will-change-transform transition-[transform,opacity] duration-150 ease-out"
+          className="fixed inset-0 z-20 flex flex-col items-center justify-center pointer-events-none px-6 text-center will-change-transform"
         >
           <h2
             className="text-white text-center tracking-wide leading-[1.08]"
@@ -124,11 +129,11 @@ export default function Home() {
         </div>
 
         {/* ============================================================== */}
-        {/* SCROLL SPACER: 560vh Snappy & Smooth Gallery Scroll            */}
+        {/* SCROLL SPACER: 1100vh Natural Walking-Pace Gallery Scroll      */}
         {/* ============================================================== */}
         <div
           className="relative z-10 w-full pointer-events-none"
-          style={{ height: '560vh' }}
+          style={{ height: '1100vh' }}
         />
       </SmoothScroller>
     </main>

@@ -20,7 +20,7 @@ interface LibrarySceneProps {
   onInspectionChange?: (isInspecting: boolean) => void;
 }
 
-// Camera Rig reading smooth Lenis-backed window scroll directly in useFrame (0 React re-renders)
+// Camera Rig synced directly to sub-pixel Lenis scroll with frame-rate-independent exponential damping
 function CameraRig({
   inspectedShelf,
   shelfTransforms,
@@ -30,39 +30,65 @@ function CameraRig({
 }) {
   const { camera } = useThree();
   const currentLookAt = useRef(new THREE.Vector3(0, -0.05, -6));
-  const mouseRef = useRef({ x: 0, y: 0 });
-  const scrollTargetRef = useRef(0);
-  const smoothedProgressRef = useRef(0);
+  const mouseTargetRef = useRef({ x: 0, y: 0 });
+  const mouseSmoothedRef = useRef({ x: 0, y: 0 });
+  const smoothedProgressRef = useRef(0.001);
+  const inspectBlendRef = useRef(0);
+  const lastInspectPosRef = useRef(new THREE.Vector3(0, -0.02, 7.5));
+  const lastInspectLookRef = useRef(new THREE.Vector3(0, -0.06, -6));
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      mouseRef.current.x = (e.clientX / window.innerWidth - 0.5) * 2;
-      mouseRef.current.y = (e.clientY / window.innerHeight - 0.5) * 2;
+      mouseTargetRef.current.x = (e.clientX / window.innerWidth - 0.5) * 2;
+      mouseTargetRef.current.y = (e.clientY / window.innerHeight - 0.5) * 2;
     };
-    const updateScroll = () => {
-      const maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
-      scrollTargetRef.current = THREE.MathUtils.clamp(window.scrollY / maxScroll, 0.001, 0.965);
-    };
-    updateScroll();
     window.addEventListener('mousemove', handleMouseMove, { passive: true });
-    window.addEventListener('scroll', updateScroll, { passive: true });
-    window.addEventListener('resize', updateScroll, { passive: true });
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('scroll', updateScroll);
-      window.removeEventListener('resize', updateScroll);
     };
   }, []);
 
   useFrame((_, delta) => {
-    const parallaxX = mouseRef.current.x * 0.14;
-    const parallaxY = -mouseRef.current.y * 0.08;
+    const dt = Math.min(delta, 0.05);
+
+    // Smooth parallax mouse input independently
+    const mouseAlpha = 1 - Math.exp(-7.5 * dt);
+    mouseSmoothedRef.current.x = THREE.MathUtils.lerp(mouseSmoothedRef.current.x, mouseTargetRef.current.x, mouseAlpha);
+    mouseSmoothedRef.current.y = THREE.MathUtils.lerp(mouseSmoothedRef.current.y, mouseTargetRef.current.y, mouseAlpha);
+
+    const parallaxX = mouseSmoothedRef.current.x * 0.14;
+    const parallaxY = -mouseSmoothedRef.current.y * 0.08;
+
+    // Read floating-point sub-pixel scroll every frame directly (zero DOM scroll-event phase jitter)
+    const maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+    const liveScroll = (typeof window !== 'undefined' ? window.__yshelfScroll : undefined) ?? window.scrollY;
+    const rawTarget = THREE.MathUtils.clamp(liveScroll / maxScroll, 0.001, 0.965);
+
+    // Single smooth exponential damper along the 1D spline parameter
+    const scrollAlpha = 1 - Math.exp(-6.5 * dt);
+    smoothedProgressRef.current = THREE.MathUtils.lerp(smoothedProgressRef.current, rawTarget, scrollAlpha);
+
+    const clampedProgress = THREE.MathUtils.clamp(smoothedProgressRef.current, 0.001, 0.965);
+    const pathPoint = tunnelCurve.getPointAt(clampedProgress);
+    const tangent = tunnelCurve.getTangentAt(clampedProgress).normalize();
+    const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+
+    const corridorCamPos = pathPoint.clone();
+    corridorCamPos.y = -0.02 + parallaxY * 0.35;
+    corridorCamPos.add(normal.multiplyScalar(parallaxX * 0.85));
+
+    const lookAheadProgress = Math.min(0.999, clampedProgress + 0.042);
+    const corridorLookAt = tunnelCurve.getPointAt(lookAheadProgress).clone();
+    corridorLookAt.y = -0.06 + parallaxY * 0.2;
+
+    // Blend smoothly into/out of bookshelf close-up inspection without cutting corridor corners while scrolling
+    const inspectTarget = inspectedShelf ? 1 : 0;
+    const inspectAlpha = 1 - Math.exp(-5.5 * dt);
+    inspectBlendRef.current = THREE.MathUtils.lerp(inspectBlendRef.current, inspectTarget, inspectAlpha);
 
     if (inspectedShelf) {
-      const inspectLerp = Math.min(1, delta * 5.2);
       const transform = shelfTransforms.get(inspectedShelf.id);
       if (transform) {
-        // Position camera cleanly across corridor inside opposite wall (~2.42m from shelf)
         const targetCamPos = transform.pos
           .clone()
           .add(transform.frontVec.clone().multiplyScalar(2.42));
@@ -72,37 +98,28 @@ function CameraRig({
         const targetLookAt = transform.pos.clone();
         targetLookAt.y = transform.pos.y + 0.18;
 
-        camera.position.lerp(targetCamPos, inspectLerp);
-        currentLookAt.current.lerp(targetLookAt, inspectLerp);
-        camera.lookAt(currentLookAt.current);
+        lastInspectPosRef.current.lerp(targetCamPos, inspectAlpha);
+        lastInspectLookRef.current.lerp(targetLookAt, inspectAlpha);
+      }
+    } else if (inspectBlendRef.current < 0.001) {
+      inspectBlendRef.current = 0;
+    }
+
+    if (inspectBlendRef.current > 0) {
+      camera.position.lerpVectors(corridorCamPos, lastInspectPosRef.current, inspectBlendRef.current);
+      currentLookAt.current.lerpVectors(corridorLookAt, lastInspectLookRef.current, inspectBlendRef.current);
+      if (!inspectedShelf) {
+        // Keep lastInspectPos anchored on transition start so exiting doesn't snap
+        lastInspectPosRef.current.copy(lastInspectPosRef.current);
       }
     } else {
-      // Crisp, silky tracking synced tightly to Lenis smooth wheel (zero heavy double-lag)
-      const camLerp = Math.min(1, delta * 11.0);
-      smoothedProgressRef.current = THREE.MathUtils.lerp(
-        smoothedProgressRef.current,
-        scrollTargetRef.current,
-        camLerp
-      );
-
-      const clampedProgress = THREE.MathUtils.clamp(smoothedProgressRef.current, 0.001, 0.965);
-      const pathPoint = tunnelCurve.getPointAt(clampedProgress);
-      const tangent = tunnelCurve.getTangentAt(clampedProgress).normalize();
-      const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
-
-      const targetCamPos = pathPoint.clone();
-      targetCamPos.y = -0.02 + parallaxY * 0.35;
-      targetCamPos.add(normal.multiplyScalar(parallaxX * 0.85));
-
-      const lookAheadProgress = Math.min(0.999, clampedProgress + 0.042);
-      const lookAheadPoint = tunnelCurve.getPointAt(lookAheadProgress);
-      const targetLookAt = lookAheadPoint.clone();
-      targetLookAt.y = -0.06 + parallaxY * 0.2;
-
-      camera.position.lerp(targetCamPos, camLerp);
-      currentLookAt.current.lerp(targetLookAt, camLerp);
-      camera.lookAt(currentLookAt.current);
+      camera.position.copy(corridorCamPos);
+      currentLookAt.current.copy(corridorLookAt);
+      lastInspectPosRef.current.copy(corridorCamPos);
+      lastInspectLookRef.current.copy(corridorLookAt);
     }
+
+    camera.lookAt(currentLookAt.current);
   });
 
   return null;
